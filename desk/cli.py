@@ -25,7 +25,7 @@ from desk.geoblock import check_geoblock
 from desk.journal import Journal, format_note
 from desk.lock import cycle_lock
 from desk.notify import Notifier
-from desk.store import Store
+from desk.store import ModeMismatch, Store
 
 log = logging.getLogger("desk")
 USER_AGENT = "polymarket-desk/0.1"
@@ -53,6 +53,15 @@ def build_app(config_path: Path, env_path: Path) -> App:
     secrets = load_secrets(merged_env(env_path))
     http = httpx.Client(timeout=20.0, headers={"User-Agent": USER_AGENT}, follow_redirects=True)
     store = Store(settings.state_dir / "desk.db", start_cash=settings.bankroll_start_usd)
+    try:
+        store.ensure_mode(settings.mode)
+    except ModeMismatch as exc:
+        store.close()
+        http.close()
+        raise ConfigError(
+            f'a pasta {settings.state_dir} guarda o registro do modo "{exc.stored}". Para o modo "{exc.requested}", '
+            f"renomeie-a (ex.: state-{exc.stored}) ou aponte state_dir para outra pasta no config.toml"
+        ) from exc
     journal = Journal(settings.state_dir / "trades.txt")
     token = secrets.telegram_bot_token.get_secret_value() if secrets.telegram_bot_token else None
     notifier = Notifier(http, token, secrets.telegram_chat_id)

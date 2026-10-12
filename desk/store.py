@@ -41,6 +41,15 @@ def _dt(value: str | None) -> datetime | None:
     return datetime.fromisoformat(value) if value else None
 
 
+class ModeMismatch(Exception):
+    """The database belongs to the other mode (paper vs live)."""
+
+    def __init__(self, stored: str, requested: str):
+        super().__init__(f"banco de dados do modo {stored}, configuração pede {requested}")
+        self.stored = stored
+        self.requested = requested
+
+
 class Store:
     def __init__(self, path: Path, start_cash: float):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -93,6 +102,18 @@ class Store:
 
     def set_consecutive_failures(self, count: int) -> None:
         self.set_meta("consecutive_failures", str(count))
+
+    def ensure_mode(self, mode: str) -> None:
+        """Pin the database to one mode so live never inherits paper cash, positions or peak."""
+        stored = self.get_meta("mode")
+        if stored is None:
+            has_history = self._db.execute(
+                "SELECT EXISTS(SELECT 1 FROM equity) OR EXISTS(SELECT 1 FROM positions)"
+            ).fetchone()[0]
+            stored = "paper" if has_history else mode  # history from before pinning can only be paper
+            self.set_meta("mode", stored)
+        if stored != mode:
+            raise ModeMismatch(stored, mode)
 
     # --- equity -------------------------------------------------------------
     def record_equity(self, ts: datetime, equity: float, cash: float, positions_value: float) -> None:

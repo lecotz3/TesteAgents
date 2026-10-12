@@ -92,7 +92,7 @@ Ao cair 40% do pico, o robô para de abrir posições (as saídas continuam), es
 2. Crie uma conta Polymarket **dedicada** e deposite só a banca (US$50–100, vira pUSD). Faça 1 trade manual pequeno pelo site para liberar as aprovações. Nunca use sua carteira principal.
 3. `uv sync --extra live`
 4. Copie `.env.example` para `.env` e preencha `POLY_PRIVATE_KEY`, `POLY_WALLET` e `DESK_LIVE=I_UNDERSTAND` (passo a passo de como obter cada um em [`PENDENCIAS.md`](PENDENCIAS.md)). **Nunca cole essas chaves em chat nenhum** (nem com o Claude).
-5. Em `config.toml`, troque `mode = "live"` e ajuste `bankroll_start_usd` para o saldo real. Para um registro limpo, renomeie a pasta `state` antiga (ex.: `state-paper`).
+5. Em `config.toml`, troque `mode = "live"` e ajuste `bankroll_start_usd` para o saldo real. **Obrigatório:** renomeie a pasta `state` do paper (ex.: `state-paper`). O robô se recusa a rodar o modo real em cima do registro do paper.
 6. `.venv\Scripts\python -m desk live-check` — precisa terminar com "PRONTO para modo real".
 7. Acompanhe o primeiro trade real de perto.
 

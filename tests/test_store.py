@@ -3,7 +3,7 @@ from datetime import timedelta
 import pytest
 
 from desk.models import TradeRecord
-from desk.store import Store
+from desk.store import ModeMismatch, Store
 from tests.factories import NOW, make_analysis, make_position
 
 
@@ -102,3 +102,16 @@ def test_old_database_gets_event_id_column(tmp_path):
         assert reopened.open_positions()[0].event_id == "e1"
     finally:
         reopened.close()
+
+
+def test_mode_is_pinned_on_first_use(store):
+    store.ensure_mode("paper")
+    store.ensure_mode("paper")
+    with pytest.raises(ModeMismatch):
+        store.ensure_mode("live")
+
+
+def test_database_with_history_but_no_mode_counts_as_paper(store):
+    store.record_equity(NOW, 100.0, 100.0, 0.0)  # written before modes were pinned: only paper existed
+    with pytest.raises(ModeMismatch):
+        store.ensure_mode("live")

@@ -122,3 +122,11 @@ def test_live_check_flags_closed_only_account(tmp_path, monkeypatch, capsys):
     code, out = live_check(tmp_path, monkeypatch, FakeSdkClient(balance=100_000_000, closed_only=True), capsys)
     assert code == 1
     assert "closed-only" in out and "NÃO está pronto" in out
+
+
+def test_live_mode_refuses_the_paper_state_dir(tmp_path):
+    paper = cli.build_app(write_config(tmp_path), tmp_path / ".env")
+    paper.store.close()
+    paper.http.close()
+    with pytest.raises(cli.ConfigError, match="state"):
+        cli.build_app(write_config(tmp_path, 'mode = "live"\n'), tmp_path / ".env")

@@ -96,7 +96,7 @@ O modo real usa o SDK oficial `polymarket-client` (Protocol V2, saldo em **pUSD*
    .venv\Scripts\python -m desk live-check
    ```
    Precisa terminar com **"PRONTO para modo real."** e mostrar o seu saldo.
-8. Em `config.toml`: `mode = "live"` e `bankroll_start_usd` igual ao saldo real. Renomeie a pasta `state` para `state-paper`, para começar um registro limpo.
+8. Em `config.toml`: `mode = "live"` e `bankroll_start_usd` igual ao saldo real. **Obrigatório:** renomeie a pasta `state` para `state-paper`. O robô se recusa a usar o registro do paper no modo real.
 9. Acompanhe o primeiro trade real de perto. O código do modo real foi testado com simulações, **nunca contra a exchange de verdade** (daqui não é possível). Por isso, comece com a banca mínima.
 
 O robô **não tem função de saque**. Sacar e resgatar mercados resolvidos é sempre com você, pelo site.
