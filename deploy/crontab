@@ -1,0 +1,5 @@
+# Polymarket Desk na VPS: instale com `crontab deploy/crontab` depois de ajustar DESK_HOME e PATH.
+PATH=/home/desk/.local/bin:/usr/local/bin:/usr/bin:/bin
+DESK_HOME=/home/desk/polymarket-desk
+*/10 * * * * cd $DESK_HOME && .venv/bin/python -m desk cycle >> state/cron.log 2>&1
+0 9 * * * cd $DESK_HOME && .venv/bin/python -m desk monthly >> state/cron.log 2>&1
