@@ -15,7 +15,7 @@ allow_categories = []          # vazio = todas; ex.: ["weather"] para o pivô do
 analyst = "claude"             # "claude" (Claude Code) ou "codex" (Codex CLI)
 claude_model = "sonnet"
 codex_model = ""               # vazio = modelo padrão do Codex
-analyses_per_cycle = 6         # mercados novos analisados por ciclo (protege a cota do plano)
+analyses_per_cycle = 3         # mercados novos por ciclo (~18/h). Pro: 2. Max: até 6. Ver docs/PENDENCIAS.md
 analysis_ttl_hours = 3.0
 held_reanalysis_minutes = 60
 analyst_failure_cooldown_minutes = 30
