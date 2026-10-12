@@ -111,9 +111,9 @@ Segredos só via ambiente/`.env`: `POLY_PRIVATE_KEY`, `POLY_FUNDER`, `POLY_SIGNA
 
 Executado a cada 10 min pelo agendador. Adquire `state/desk.lock` (trava considerada velha após 30 min); se não conseguir, sai sem fazer nada.
 
-1. **Marcação a mercado.** Para cada posição aberta, busca o livro do token e avalia pelo melhor *bid*. `equity = caixa + Σ valor`. Grava em `equity`; atualiza o pico.
-2. **Liquidação.** Posição cujo mercado a Gamma mostra como `closed` com `outcomePrices` em 0/1 é liquidada a 1 ou 0 (paper). No modo real, registra e avisa para resgatar manualmente.
-3. **Drawdown.** Se `(pico − equity) / pico ≥ drawdown_halt` e não estiver `halted`: liga `halted`, pede post-mortem ao analista (§6), anexa ao `trades.txt`, avisa. Enquanto `halted`, nenhuma entrada nova; saídas continuam. Só `python -m desk resume` desliga.
+1. **Liquidação.** Posição cujo mercado a Gamma mostra como `closed` com `outcomePrices` em 0/1 é liquidada a 1 ou 0 (paper). No modo real, registra e avisa para resgatar manualmente.
+2. **Marcação a mercado.** Para cada posição aberta, busca o livro do token e avalia pelo melhor *bid* (se o livro falhar, usa o preço de entrada). `equity = caixa + Σ valor`. Grava em `equity`; atualiza o pico. Repetida no fim do ciclo.
+3. **Drawdown.** Se `(pico − equity) / pico ≥ drawdown_halt` e não estiver `halted`: liga `halted`, pede post-mortem ao analista (§6), anexa ao `trades.txt`, avisa. Enquanto `halted`, nenhuma entrada nova; saídas continuam. Só `python -m desk resume` desliga — e redefine o pico para a equity atual (senão pararia de novo no ciclo seguinte).
 4. **Saídas** (antes de entradas). Posições abertas têm prioridade de reanálise a cada `held_reanalysis_minutes`, fora do orçamento de mercados novos. Vende tudo se qualquer uma:
    - vantagem atual do lado mantido `< exit_edge_closed_pp` (distorção fechou);
    - `|fair_prob_atual − fair_prob_entrada| > exit_fair_change_pp`;
@@ -123,6 +123,7 @@ Executado a cada 10 min pelo agendador. Adquire `state/desk.lock` (trava conside
    *Categoria:* `feeType.split("_fees")[0]` (ex.: `politics_fees` → `politics`, `sports_fees_nfl_cfb_oct26` → `sports`, `economics_fees` → `economics`); `feeType` nulo → `other`. Valores observados na API em 2026-10-12.
 6. **Análise.** Candidatos sem análise válida (idade `< analysis_ttl_hours`) e fora de *cooldown* são ordenados por `volume24hr` desc.; analisa os primeiros `analyses_per_cycle`. Pula se `halted` ou se já há `max_open_positions`.
 7. **Decisão de entrada** para cada mercado com análise válida, `confidence ≥ min_confidence` e `official_resolution_source` não nulo:
+   - **Pré-filtro barato:** só busca livros se `max(q − preço_gamma)` entre os dois lados for maior que `min_edge_pp − 3` pp (preços da Gamma; evita centenas de chamadas ao CLOB por ciclo).
    - `p` = `fair_prob` do resultado 0; lado SIM usa token 0 com `q = p`; lado NÃO usa token 1 com `q = 1 − p`.
    - Busca o livro do token; `ask` = melhor *ask*. `vantagem = q − ask − taxa_por_cota(ask)`. Escolhe o lado de maior vantagem; segue só se `vantagem × 100 > min_edge_pp`.
    - **Tamanho** (§5) → `n` cotas. Se `n < orderMinSize`, pula com motivo registrado.
@@ -187,13 +188,13 @@ claude -p <prompt> --output-format json --json-schema <schema>
 
 **Paper (`executor/paper.py`):** preenche percorrendo o livro real no momento da ordem até `n` cotas sem ultrapassar `P_lim` (FOK: se não houver profundidade, não preenche). Taxa por nível = `cotas × rate × p × (1 − p)`, debitada do caixa. Venda simétrica nos *bids*.
 
-**Real (`executor/live.py`):** só ativo se `mode = "live"` **e** `DESK_LIVE=I_UNDERSTAND`. Antes de cada ordem: `geoblock.check()` → se `blocked` verdadeiro, erro de rede ou resposta inesperada, aborta (fail-closed) e avisa. Usa `py-clob-client` (`ClobClient(host, key, chain_id=137, signature_type, funder)`, credenciais L2 derivadas), ordem limite `FOK` a `P_lim`. Preenchimento confirmado pela resposta; falha → nenhuma posição registrada, aviso. Carteira dedicada contendo só a banca. Não existe função de saque.
+**Real (`executor/live.py`):** só ativo se `mode = "live"` **e** `DESK_LIVE=I_UNDERSTAND`. Antes de cada ordem: `geoblock.check()` → se `blocked` verdadeiro, erro de rede ou resposta inesperada, aborta (fail-closed) e avisa. Usa `py-clob-client` (`ClobClient(host, key, chain_id=137, signature_type, funder)`, credenciais L2 derivadas), ordem a mercado `FOK` com preço-limite `P_lim` (compra: valor em USDC com 2 casas; venda: cotas com 2 casas — exigência de precisão do CLOB para FOK). Preenchimento confirmado pela resposta; falha → nenhuma posição registrada, aviso. Carteira dedicada contendo só a banca. Não existe função de saque.
 
 `python -m desk live-check`: verifica geobloqueio, credenciais e saldo USDC; não envia ordens.
 
 ## 8. Autofinanciamento (`python -m desk monthly`)
 
-Agendado para o dia 1º. Calcula `equity − (subscription_cost_usd + monthly_reserve_usd)`; se positivo, avisa "pode sacar US$X"; senão, avisa o déficit. Também anota no `trades.txt`. Quem saca é sempre o usuário.
+Agendado diariamente, mas só relata uma vez por mês (chave `last_monthly_report` no SQLite; `--force` ignora) — assim funciona mesmo se o PC estiver desligado no dia 1º. Se `equity ≥ subscription_cost_usd + monthly_reserve_usd`: avisa que cobre a assinatura, saque sugerido = `subscription_cost_usd`, máximo mantendo a reserva = `min(caixa, equity − monthly_reserve_usd)`. Senão, avisa o déficit. Em paper, a mensagem é marcada `[PAPER]`. Também anota no `trades.txt`. Quem saca é sempre o usuário.
 
 ## 9. Erros
 
