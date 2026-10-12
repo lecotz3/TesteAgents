@@ -105,3 +105,9 @@ def test_sports_market_trades_only_until_game_start():
 def test_market_without_game_trades_until_end_date():
     m = parse_market(raw_market())
     assert m.game_start is None and m.trade_deadline == m.end_date
+
+
+def test_event_id_groups_sibling_markets():
+    assert parse_market(raw_market(events=[{"id": "606422", "slug": "fed-decision"}])).event_id == "606422"
+    assert parse_market(raw_market(negRiskMarketID="0x09ac")).event_id == "0x09ac"
+    assert parse_market(raw_market()).event_id is None

@@ -50,3 +50,9 @@ def test_pick_for_analysis_orders_by_volume_and_skips_fresh_and_cooldown():
     picked = pick_for_analysis(markets, fresh_ids={"9"}, cooldown_ids={"8"}, budget=3)
     assert [m.id for m in picked] == ["7", "6", "5"]
     assert pick_for_analysis(markets, set(), set(), 0) == []
+
+
+def test_skips_sibling_of_a_held_event():
+    m = make_market(event_id="606422")
+    assert rejection_reason(m, NOW, S, set(), {"606422"}) == "event_held"
+    assert rejection_reason(m, NOW, S, set(), {"other"}) is None

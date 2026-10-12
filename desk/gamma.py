@@ -49,6 +49,13 @@ def _float(value, default: float = 0.0) -> float:
         return default
 
 
+def _event_id(raw: dict) -> str | None:
+    events = raw.get("events")
+    if isinstance(events, list) and events and isinstance(events[0], dict) and events[0].get("id") is not None:
+        return str(events[0]["id"])
+    return raw.get("negRiskMarketID") or None
+
+
 def parse_market(raw: dict) -> Market | None:
     outcomes = _json_list(raw.get("outcomes"))
     tokens = _json_list(raw.get("clobTokenIds"))
@@ -84,6 +91,7 @@ def parse_market(raw: dict) -> Market | None:
         tick_size=_float(raw.get("orderPriceMinTickSize"), 0.01),
         neg_risk=bool(raw.get("negRisk")),
         game_start=_parse_dt(raw.get("gameStartTime")),
+        event_id=_event_id(raw),
     )
 
 

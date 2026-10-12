@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS positions (
     outcome_index INTEGER NOT NULL, outcome TEXT NOT NULL, token_id TEXT NOT NULL,
     shares REAL NOT NULL, avg_price REAL NOT NULL, fee_paid REAL NOT NULL, entry_fair_prob REAL NOT NULL,
     exit_condition TEXT NOT NULL, resolution_source TEXT NOT NULL, end_date TEXT NOT NULL, opened_at TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'open', closed_at TEXT, exit_price REAL, proceeds REAL, close_reason TEXT
+    status TEXT NOT NULL DEFAULT 'open', closed_at TEXT, exit_price REAL, proceeds REAL, close_reason TEXT,
+    event_id TEXT
 );
 CREATE TABLE IF NOT EXISTS trades (
     id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, position_id INTEGER NOT NULL, market_id TEXT NOT NULL,
@@ -46,9 +47,16 @@ class Store:
         self._db = sqlite3.connect(path)
         self._db.row_factory = sqlite3.Row
         self._db.executescript(SCHEMA)
+        self._migrate()
         if self.get_meta("cash") is None:
             for key, value in (("cash", start_cash), ("peak", start_cash), ("halted", 0), ("consecutive_failures", 0)):
                 self.set_meta(key, str(value))
+
+    def _migrate(self) -> None:
+        columns = {r["name"] for r in self._db.execute("PRAGMA table_info(positions)").fetchall()}
+        if "event_id" not in columns:  # databases created before event grouping
+            with self._db:
+                self._db.execute("ALTER TABLE positions ADD COLUMN event_id TEXT")
 
     def close(self) -> None:
         self._db.close()
@@ -105,12 +113,13 @@ class Store:
         with self._db:
             cur = self._db.execute(
                 """INSERT INTO positions (market_id, slug, question, category, outcome_index, outcome, token_id,
-                       shares, avg_price, fee_paid, entry_fair_prob, exit_condition, resolution_source, end_date, opened_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       shares, avg_price, fee_paid, entry_fair_prob, exit_condition, resolution_source, end_date, opened_at,
+                       event_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     pos.market_id, pos.slug, pos.question, pos.category, pos.outcome_index, pos.outcome, pos.token_id,
                     pos.shares, pos.avg_price, pos.fee_paid, pos.entry_fair_prob, pos.exit_condition,
-                    pos.resolution_source, _iso(pos.end_date), _iso(pos.opened_at),
+                    pos.resolution_source, _iso(pos.end_date), _iso(pos.opened_at), pos.event_id,
                 ),
             )
         return int(cur.lastrowid)
@@ -140,6 +149,7 @@ class Store:
                 resolution_source=r["resolution_source"], end_date=_dt(r["end_date"]),
                 opened_at=_dt(r["opened_at"]), id=r["id"], status=r["status"], closed_at=_dt(r["closed_at"]),
                 exit_price=r["exit_price"], proceeds=r["proceeds"], close_reason=r["close_reason"],
+                event_id=r["event_id"],
             )
             for r in rows
         ]

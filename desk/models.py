@@ -30,6 +30,7 @@ class Market:
     tick_size: float
     neg_risk: bool
     game_start: datetime | None = None  # sports: the result starts moving live at kickoff
+    event_id: str | None = None  # sibling markets (e.g. Fed hold / Fed hike) share one event
 
     @property
     def trade_deadline(self) -> datetime:
@@ -120,6 +121,7 @@ class Position:
     exit_price: float | None = None
     proceeds: float | None = None
     close_reason: str | None = None
+    event_id: str | None = None
 
     @property
     def cost(self) -> float:

@@ -264,7 +264,8 @@ class _Cycle:
             return
         self.report.scanned = len(markets)
         excluded = {p.market_id for p in open_positions} | self.store.blocked_ids(self.now)
-        candidates = screen(markets, self.now, self.s.scan, excluded)
+        held_events = {p.event_id for p in open_positions if p.event_id}  # one view per event, not one per market
+        candidates = screen(markets, self.now, self.s.scan, excluded, held_events)
         candidates.sort(key=lambda m: m.volume_24h, reverse=True)
         self.report.candidates = len(candidates)
 
@@ -281,6 +282,9 @@ class _Cycle:
             if len(self.store.open_positions()) >= self.s.risk.max_open_positions:
                 break
             if market.id not in fresh_ids:
+                continue
+            if market.event_id is not None and market.event_id in held_events:
+                self.report.skips["event_held"] += 1
                 continue
             analysis = self.store.get_analysis(market.id)
             if analysis is None:
@@ -310,9 +314,10 @@ class _Cycle:
             if isinstance(plan, Skip):
                 self.report.skips[plan.reason] += 1
                 continue
-            self.enter(market, analysis, plan, books[plan.outcome_index])
+            if self.enter(market, analysis, plan, books[plan.outcome_index]) and market.event_id is not None:
+                held_events.add(market.event_id)
 
-    def enter(self, market: Market, analysis: Analysis, plan: EntryPlan, book: OrderBook) -> None:
+    def enter(self, market: Market, analysis: Analysis, plan: EntryPlan, book: OrderBook) -> bool:
         try:
             fill = self.d.executor.buy(market, plan.token_id, plan.shares, plan.limit_price, book)
         except ExecutionError as exc:
@@ -322,7 +327,7 @@ class _Cycle:
                                        "ordem incerta")
             if self.d.executor.mode == "live":
                 self.d.notifier.send(f"Compra falhou em {market.question}: {exc}")
-            return
+            return False
         cost = fill.notional + fill.fee
         self.store.adjust_cash(-cost)
         pos = Position(
@@ -330,7 +335,7 @@ class _Cycle:
             outcome_index=plan.outcome_index, outcome=market.outcomes[plan.outcome_index], token_id=plan.token_id,
             shares=fill.shares, avg_price=fill.avg_price, fee_paid=fill.fee, entry_fair_prob=plan.q,
             exit_condition=analysis.exit_condition, resolution_source=analysis.official_resolution_source or "",
-            end_date=market.trade_deadline, opened_at=self.now,
+            end_date=market.trade_deadline, opened_at=self.now, event_id=market.event_id,
         )
         pos.id = self.store.add_position(pos)
         self.store.add_trade(TradeRecord(
@@ -342,3 +347,4 @@ class _Cycle:
         ))
         self.books.pop(plan.token_id, None)
         self.report.entries += 1
+        return True

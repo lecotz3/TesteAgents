@@ -321,3 +321,13 @@ def test_refreshed_analysis_that_still_shows_edge_buys(env):
     report = run_cycle(make_deps(tmp_path, store, [m], books_for(m), analyst))
     assert analyst.calls == [m.id]
     assert report.entries == 1
+
+
+def test_buys_only_one_market_per_event(env):
+    tmp_path, store = env
+    hold = make_market(id="1", slug="fed-hold", token_ids=("1a", "1b"), event_id="606422")
+    hike = make_market(id="2", slug="fed-hike", token_ids=("2a", "2b"), event_id="606422")
+    books = {**books_for(hold), **books_for(hike)}
+    report = run_cycle(make_deps(tmp_path, store, [hold, hike], books, FakeAnalyst({"1": 0.74, "2": 0.74})))
+    assert report.entries == 1
+    assert store.open_positions()[0].event_id == "606422"

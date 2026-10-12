@@ -79,3 +79,26 @@ def test_failures_and_cooldown(store):
     assert store.failed_since(NOW + timedelta(minutes=1)) == set()
     store.save_analysis(make_analysis())
     assert store.failed_since(NOW - timedelta(minutes=30)) == set()
+
+
+def test_position_keeps_event_id(store):
+    store.add_position(make_position(event_id="606422"))
+    assert store.open_positions()[0].event_id == "606422"
+
+
+def test_old_database_gets_event_id_column(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "old.db"
+    old = Store(path, start_cash=100.0)
+    old.close()
+    db = sqlite3.connect(path)
+    db.execute("ALTER TABLE positions DROP COLUMN event_id")
+    db.commit()
+    db.close()
+    reopened = Store(path, start_cash=100.0)
+    try:
+        reopened.add_position(make_position(event_id="e1"))
+        assert reopened.open_positions()[0].event_id == "e1"
+    finally:
+        reopened.close()

@@ -7,11 +7,14 @@ from desk.config import ScanSettings
 from desk.models import Market
 
 
-def rejection_reason(m: Market, now: datetime, s: ScanSettings, held_ids: set[str]) -> str | None:
+def rejection_reason(m: Market, now: datetime, s: ScanSettings, held_ids: set[str],
+                     held_events: set[str] = frozenset()) -> str | None:
     if m.closed or not m.enable_order_book or not m.accepting_orders:
         return "not_tradable"
     if m.id in held_ids:
         return "already_held"
+    if m.event_id is not None and m.event_id in held_events:
+        return "event_held"
     if m.liquidity < s.min_liquidity_usd:
         return "low_liquidity"
     if (m.trade_deadline - now).total_seconds() / 3600 < s.min_hours_to_resolution:
@@ -28,8 +31,9 @@ def rejection_reason(m: Market, now: datetime, s: ScanSettings, held_ids: set[st
     return None
 
 
-def screen(markets: list[Market], now: datetime, s: ScanSettings, held_ids: set[str]) -> list[Market]:
-    return [m for m in markets if rejection_reason(m, now, s, held_ids) is None]
+def screen(markets: list[Market], now: datetime, s: ScanSettings, held_ids: set[str],
+           held_events: set[str] = frozenset()) -> list[Market]:
+    return [m for m in markets if rejection_reason(m, now, s, held_ids, held_events) is None]
 
 
 def pick_for_analysis(candidates: list[Market], fresh_ids: set[str], cooldown_ids: set[str], budget: int) -> list[Market]:
