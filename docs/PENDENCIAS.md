@@ -8,10 +8,26 @@ Tudo que eu (Claude) não posso fazer por você: credenciais, dinheiro e decisõ
 
 | Item | Estado |
 |---|---|
-| Código | Pronto, 158+ testes passando, na branch `feat/polymarket-desk` |
-| Modo paper | Funcionando. 1º ciclo real: 968 mercados varridos, 435 candidatos, 6 analisados pelo Claude, 0 entradas (nenhuma distorção ≥ 8pp), 0 erros |
-| Agendador do Windows | Tarefas `PolymarketDesk` (a cada 10 min) e `PolymarketDeskMonthly` (diária, relata 1x/mês) |
+| Código | Pronto, 204 testes passando, na branch `feat/polymarket-desk` (PR #1 no GitHub) |
+| Modo paper | Funcionando. 2 ciclos reais: ~970–990 mercados varridos, ~435 candidatos, 4–6 analisados pelo Claude, 0 entradas (nenhuma distorção ≥ 8pp), 0 erros |
+| Agendador do Windows | **Falta você ligar** (passo 0 abaixo). Por segurança, o Claude Code não tem permissão para registrar tarefas persistentes no seu Windows |
 | Modo real | **Bloqueado deste PC**: `python -m desk live-check` responde "Geobloqueio: BLOQUEADO (ConnectError)" porque esta rede não alcança `polymarket.com` |
+
+---
+
+## 0. Ligar o robô (único passo obrigatório, 1 minuto)
+
+No PowerShell, na pasta do projeto (`C:\Projetos\TesteAgents`):
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1
+```
+Ou, dentro do Claude Code, digite: `! powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1`
+
+Isso cria duas tarefas:
+- `PolymarketDesk`: um ciclo a cada 10 min, em paper.
+- `PolymarketDeskMonthly`: roda todo dia e relata uma vez por mês.
+
+Para conferir: `Get-ScheduledTask PolymarketDesk*`. Para desligar: `scripts\uninstall_task.ps1`.
 
 ---
 
