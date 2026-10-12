@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 from desk.models import Analysis, Evidence, Level, Market, OrderBook, Position
 from desk.notify import Notifier
@@ -119,3 +121,55 @@ class CapturingNotifier(Notifier):
 
     def send(self, text: str) -> None:
         self.sent.append(text)
+
+
+@dataclass
+class SdkAccepted:
+    status: str
+    making_amount: Decimal
+    taking_amount: Decimal
+    ok: bool = True
+
+
+@dataclass
+class SdkRejected:
+    code: str
+    message: str
+    ok: bool = False
+
+
+@dataclass
+class SdkBalance:
+    balance: int
+    allowances: dict
+
+
+@dataclass
+class SdkApprovals:
+    is_fully_approved: bool
+    missing: object = None
+
+
+class FakeSdkClient:
+    """Stands in for polymarket.SecureClient; records the keyword arguments of each order."""
+
+    def __init__(self, response=None, balance=0, closed_only=False, approved=True):
+        self.response = response
+        self.balance = balance
+        self.closed_only = closed_only
+        self.approved = approved
+        self.orders = []
+
+    def place_market_order(self, **kwargs):
+        self.orders.append(kwargs)
+        return self.response
+
+    def get_balance_allowance(self, *, asset_type):
+        assert asset_type == "COLLATERAL"
+        return SdkBalance(balance=self.balance, allowances={})
+
+    def get_closed_only_mode(self):
+        return self.closed_only
+
+    def get_trading_approvals_state(self):
+        return SdkApprovals(is_fully_approved=self.approved)

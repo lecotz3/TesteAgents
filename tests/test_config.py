@@ -47,8 +47,8 @@ def test_missing_config_file_is_a_config_error(tmp_path):
 
 def test_env_file_parsing_skips_comments_and_strips_quotes(tmp_path):
     env = tmp_path / ".env"
-    env.write_text('# comment\nPOLY_FUNDER="0xabc"\nEMPTY=\nTELEGRAM_CHAT_ID=42\n', encoding="utf-8")
-    assert read_env_file(env) == {"POLY_FUNDER": "0xabc", "EMPTY": "", "TELEGRAM_CHAT_ID": "42"}
+    env.write_text('# comment\nPOLY_WALLET="0xabc"\nEMPTY=\nTELEGRAM_CHAT_ID=42\n', encoding="utf-8")
+    assert read_env_file(env) == {"POLY_WALLET": "0xabc", "EMPTY": "", "TELEGRAM_CHAT_ID": "42"}
 
 
 def test_real_environment_overrides_env_file(tmp_path, monkeypatch):
@@ -63,10 +63,9 @@ def test_secrets_never_show_private_key():
     assert secrets.poly_private_key.get_secret_value() == "0xsupersecret"
     assert "0xsupersecret" not in repr(secrets)
     assert "zz-telegram-secret-zz" not in repr(secrets)
-    assert secrets.poly_signature_type == 1
+    assert secrets.poly_wallet is None
     assert secrets.desk_live is None
 
 
-def test_bad_signature_type_is_a_config_error():
-    with pytest.raises(ConfigError):
-        load_secrets({"POLY_SIGNATURE_TYPE": "abc"})
+def test_wallet_address_comes_from_poly_wallet():
+    assert load_secrets({"POLY_WALLET": " 0xabc "}).poly_wallet == "0xabc"

@@ -2,7 +2,8 @@ import pytest
 
 from desk import cli
 from desk.cycle import CycleReport
-from tests.factories import NOW, CapturingNotifier
+from desk.geoblock import GeoStatus
+from tests.factories import NOW, CapturingNotifier, FakeSdkClient
 
 
 def write_config(tmp_path, body='mode = "paper"\nbankroll_start_usd = 100.0\n'):
@@ -96,3 +97,28 @@ def test_status_prints_summary(app, capsys):
 
 def test_main_reports_config_errors(tmp_path):
     assert cli.main(["--config", str(tmp_path / "missing.toml"), "status"]) == 2
+
+
+def live_check(tmp_path, monkeypatch, client, capsys):
+    env = tmp_path / ".env"
+    env.write_text("DESK_LIVE=I_UNDERSTAND\nPOLY_PRIVATE_KEY=0xkey\n", encoding="utf-8")
+    a = cli.build_app(write_config(tmp_path, 'mode = "live"\nbankroll_start_usd = 100.0\n'), env)
+    monkeypatch.setattr(cli, "check_geoblock", lambda http: GeoStatus(blocked=False, country="PT", region=""))
+    monkeypatch.setattr(cli.SdkTrader, "connect", classmethod(lambda cls, key, wallet: cls(client)))
+    try:
+        return cli.cmd_live_check(a), capsys.readouterr().out
+    finally:
+        a.store.close()
+        a.http.close()
+
+
+def test_live_check_ready_shows_balance(tmp_path, monkeypatch, capsys):
+    code, out = live_check(tmp_path, monkeypatch, FakeSdkClient(balance=100_000_000), capsys)
+    assert code == 0
+    assert "$100.00" in out and "PRONTO para modo real" in out
+
+
+def test_live_check_flags_closed_only_account(tmp_path, monkeypatch, capsys):
+    code, out = live_check(tmp_path, monkeypatch, FakeSdkClient(balance=100_000_000, closed_only=True), capsys)
+    assert code == 1
+    assert "closed-only" in out and "NÃO está pronto" in out

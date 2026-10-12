@@ -88,8 +88,7 @@ def load_settings(path: Path) -> Settings:
 
 class Secrets(BaseModel):
     poly_private_key: SecretStr | None = None
-    poly_funder: str | None = None
-    poly_signature_type: int = 1
+    poly_wallet: str | None = None  # Polymarket wallet that holds the funds; None = the key's Deposit Wallet
     desk_live: str | None = None
     telegram_bot_token: SecretStr | None = None
     telegram_chat_id: str | None = None
@@ -118,14 +117,9 @@ def load_secrets(env: Mapping[str, str]) -> Secrets:
         value = (env.get(name) or "").strip()
         return value or None
 
-    try:
-        signature_type = int(get("POLY_SIGNATURE_TYPE") or "1")
-    except ValueError as exc:
-        raise ConfigError("POLY_SIGNATURE_TYPE deve ser 0, 1 ou 2") from exc
     return Secrets(
         poly_private_key=get("POLY_PRIVATE_KEY"),
-        poly_funder=get("POLY_FUNDER"),
-        poly_signature_type=signature_type,
+        poly_wallet=get("POLY_WALLET"),
         desk_live=get("DESK_LIVE"),
         telegram_bot_token=get("TELEGRAM_BOT_TOKEN"),
         telegram_chat_id=get("TELEGRAM_CHAT_ID"),

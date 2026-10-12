@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-live = ["py-clob-client>=0.34"]
+live = ["polymarket-client>=0.13"]
 
 [dependency-groups]
 dev = [

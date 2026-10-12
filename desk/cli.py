@@ -19,7 +19,7 @@ from desk.config import ConfigError, Secrets, Settings, load_secrets, load_setti
 from desk.cycle import Deps, run_cycle
 from desk.executor import LIVE_CONFIRMATION, make_executor
 from desk.executor.base import ExecutionError
-from desk.executor.live import PyClobTrader
+from desk.executor.sdk import SdkTrader
 from desk.gamma import GammaClient
 from desk.geoblock import check_geoblock
 from desk.journal import Journal, format_note
@@ -211,12 +211,14 @@ def cmd_live_check(app: App) -> int:
         ok = False
     else:
         try:
-            trader = PyClobTrader(app.secrets.poly_private_key.get_secret_value(), app.secrets.poly_funder,
-                                  app.secrets.poly_signature_type)
+            trader = SdkTrader.connect(app.secrets.poly_private_key.get_secret_value(), app.secrets.poly_wallet)
             balance = trader.usdc_balance()
-            print(f"Saldo USDC na carteira: ${balance:.2f} | Caixa no registro do desk: ${app.store.cash():.2f}")
+            print(f"Saldo pUSD na carteira: ${balance:.2f} | Caixa no registro do desk: ${app.store.cash():.2f}")
+            for problem in trader.account_problems():
+                print(f"Conta: {problem}")
+                ok = False
         except Exception as exc:  # noqa: BLE001 - report any client failure to the user
-            print(f"Falha ao conectar no CLOB: {type(exc).__name__}")
+            print(f"Falha ao conectar no Polymarket: {type(exc).__name__}: {exc}")
             ok = False
     print("PRONTO para modo real." if ok else "NÃO está pronto para modo real.")
     return 0 if ok else 1

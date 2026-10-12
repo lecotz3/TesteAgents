@@ -5,8 +5,9 @@ import httpx
 
 from desk.config import ConfigError, Secrets, Settings
 from desk.executor.base import ExecutionError, Executor
-from desk.executor.live import LiveExecutor, PyClobTrader
+from desk.executor.live import LiveExecutor
 from desk.executor.paper import PaperExecutor
+from desk.executor.sdk import SdkTrader
 from desk.geoblock import check_geoblock
 
 __all__ = ["LIVE_CONFIRMATION", "ExecutionError", "Executor", "make_executor"]
@@ -21,7 +22,5 @@ def make_executor(settings: Settings, secrets: Secrets, http: httpx.Client) -> E
         raise ConfigError('mode = "live" exige DESK_LIVE=I_UNDERSTAND no .env (segunda trava)')
     if secrets.poly_private_key is None:
         raise ConfigError('mode = "live" exige POLY_PRIVATE_KEY no .env')
-    trader = PyClobTrader(
-        secrets.poly_private_key.get_secret_value(), secrets.poly_funder, secrets.poly_signature_type
-    )
+    trader = SdkTrader.connect(secrets.poly_private_key.get_secret_value(), secrets.poly_wallet)
     return LiveExecutor(trader, lambda: check_geoblock(http))

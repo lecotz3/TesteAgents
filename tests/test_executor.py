@@ -7,7 +7,7 @@ from desk.executor.base import ExecutionError
 from desk.executor.live import LiveExecutor
 from desk.executor.paper import PaperExecutor
 from desk.geoblock import GeoStatus
-from tests.factories import make_book, make_market
+from tests.factories import FakeSdkClient, make_book, make_market
 
 
 class FakeTrader:
@@ -109,3 +109,20 @@ def test_live_requires_both_switches():
             make_executor(Settings(mode="live"), Secrets(), http)
         with pytest.raises(ConfigError):
             make_executor(Settings(mode="live"), Secrets(desk_live=LIVE_CONFIRMATION), http)
+
+
+def test_live_executor_uses_official_sdk(monkeypatch):
+    from desk.executor import sdk
+
+    seen = {}
+
+    def fake_connect(cls, private_key, wallet):
+        seen.update(key=private_key, wallet=wallet)
+        return cls(FakeSdkClient())
+
+    monkeypatch.setattr(sdk.SdkTrader, "connect", classmethod(fake_connect))
+    secrets = Secrets(desk_live=LIVE_CONFIRMATION, poly_private_key="0xkey", poly_wallet="0xwallet")
+    with httpx.Client() as http:
+        executor = make_executor(Settings(mode="live"), secrets, http)
+    assert isinstance(executor, LiveExecutor)
+    assert seen == {"key": "0xkey", "wallet": "0xwallet"}
