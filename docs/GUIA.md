@@ -59,7 +59,7 @@ Os números do guia já vêm configurados: vantagem mínima de 8pp, ½ Kelly, m�
 
 - `analyses_per_cycle` e `analysis_ttl_hours` controlam quanto da sua cota do Claude é usada.
 - `allow_categories` / `skip_categories` filtram por categoria (`weather`, `sports`, `politics`, `crypto`, `economics`, `other`…).
-- `analyst = "codex"` troca o analista para o Codex (instale com `npm i -g @openai/codex` e faça login com `codex`).
+- `analyst = "codex"` troca o analista para o Codex (instale com `npm i -g @openai/codex` e faça login com `codex`). Só no paper: no modo real o robô exige o Claude, porque o Codex consegue ler arquivos locais (inclusive o `.env`).
 
 ## Quando dá errado
 
@@ -89,7 +89,7 @@ Ao cair 40% do pico, o robô para de abrir posições (as saídas continuam), es
 ## Modo real (só depois do paper provar algo)
 
 1. Confirme que o Polymarket é permitido onde você mora **e** de onde o robô roda.
-2. Crie uma conta Polymarket **dedicada** e deposite só a banca (US$50–100, vira pUSD). Faça 1 trade manual pequeno pelo site para liberar as aprovações. Nunca use sua carteira principal.
+2. Crie uma conta Polymarket **dedicada** e deposite só a banca (US$100–150, vira pUSD; com menos, 6% da banca não chega à ordem mínima de 5 cotas e quase toda entrada é pulada). Faça 1 trade manual pequeno pelo site para liberar as aprovações. Nunca use sua carteira principal.
 3. `uv sync --extra live`
 4. Copie `.env.example` para `.env` e preencha `POLY_PRIVATE_KEY`, `POLY_WALLET` e `DESK_LIVE=I_UNDERSTAND` (passo a passo de como obter cada um em [`PENDENCIAS.md`](PENDENCIAS.md)). **Nunca cole essas chaves em chat nenhum** (nem com o Claude).
 5. Em `config.toml`, troque `mode = "live"` e ajuste `bankroll_start_usd` para o saldo real. **Obrigatório:** renomeie a pasta `state` do paper (ex.: `state-paper`). O robô se recusa a rodar o modo real em cima do registro do paper.
@@ -105,7 +105,7 @@ Todo mês, `python -m desk monthly` (agendado) diz se a banca cobre a assinatura
 ## Regras para lembrar
 
 - Nunca cole chave privada, seed ou senha em chat. Chaves só no `.env`.
-- Comece com US$50–100. O robô precisa merecer operar mais.
+- Comece com US$100–150 (menos que isso trava na ordem mínima). O robô precisa merecer operar mais.
 - 8pp mínimo, 6% por trade, 5 posições, ½ Kelly sempre.
 - Toda entrada tem condição de saída registrada antes.
 - 40% de drawdown = parar e fazer post-mortem. Sem exceção.

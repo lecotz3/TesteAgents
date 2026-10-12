@@ -58,6 +58,8 @@ O padrão é o Claude (`analyst = "claude"`). Para usar sua assinatura do ChatGP
 2. Rode `codex` uma vez e faça login.
 3. Em `config.toml`, troque para `analyst = "codex"`.
 
+O Codex vale só para o paper. No modo real o robô exige o Claude, porque o sandbox do Codex ainda lê arquivos locais (inclusive o `.env` com a chave da carteira).
+
 ### D6. Juntar a branch na `main`
 Há um Pull Request aberto no GitHub (`lecotz3/TesteAgents`). Revise e dê **Merge** quando quiser. O robô roda da pasta local, então isso não muda nada no que já está rodando.
 
@@ -80,7 +82,7 @@ Há um Pull Request aberto no GitHub (`lecotz3/TesteAgents`). Revise e dê **Mer
 O modo real usa o SDK oficial `polymarket-client` (Protocol V2, saldo em **pUSD**).
 
 1. **Conta dedicada:** crie uma conta Polymarket **nova**, só para o robô (e-mail novo), a partir de um lugar onde o Polymarket é permitido. Nunca use sua carteira principal.
-2. **Depósito:** deposite só a banca inicial (US$50–100). O Polymarket converte para pUSD.
+2. **Depósito:** deposite só a banca inicial (US$100–150; com menos, 6% da banca não chega à ordem mínima de 5 cotas e quase toda entrada é pulada). O Polymarket converte para pUSD.
 3. **Aprovações:** faça **um** trade manual pequeno (US$1) pelo site. O site pede as aprovações de trading que o robô precisa.
 4. **Chave privada (`POLY_PRIVATE_KEY`):**
    - Conta criada por e-mail: no site, menu do perfil → **Settings** → **Export Private Key**. Se não achar, a central de ajuda do Polymarket tem o artigo "How to export your private key".
