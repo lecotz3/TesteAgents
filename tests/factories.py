@@ -5,6 +5,7 @@ import json
 from datetime import datetime, timedelta, timezone
 
 from desk.models import Analysis, Evidence, Level, Market, OrderBook, Position
+from desk.notify import Notifier
 
 NOW = datetime(2026, 10, 12, 12, 0, tzinfo=timezone.utc)
 
@@ -107,3 +108,14 @@ def make_position(**overrides) -> Position:
     )
     base.update(overrides)
     return Position(**base)
+
+
+class CapturingNotifier(Notifier):
+    """Notifier that records messages instead of sending them."""
+
+    def __init__(self):
+        super().__init__()
+        self.sent: list[str] = []
+
+    def send(self, text: str) -> None:
+        self.sent.append(text)
