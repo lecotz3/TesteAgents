@@ -34,6 +34,7 @@ drawdown_halt = 0.40
 exit_edge_closed_pp = 1.0
 exit_fair_change_pp = 5.0
 exit_hours_before_resolution = 1.0
+reentry_cooldown_hours = 6.0   # depois de vender, não recompra o mesmo mercado por 6h (evita girar taxa)
 
 [monthly]
 subscription_cost_usd = 20.0

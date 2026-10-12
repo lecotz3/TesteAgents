@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS analyses (
 );
 CREATE TABLE IF NOT EXISTS analysis_failures (market_id TEXT PRIMARY KEY, failed_at TEXT NOT NULL, error TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS equity (ts TEXT NOT NULL, equity REAL NOT NULL, cash REAL NOT NULL, positions_value REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS entry_blocks (market_id TEXT PRIMARY KEY, until TEXT NOT NULL, reason TEXT NOT NULL);
 """
 
 
@@ -213,4 +214,16 @@ class Store:
         rows = self._db.execute(
             "SELECT market_id FROM analysis_failures WHERE failed_at >= ?", (_iso(cutoff),)
         ).fetchall()
+        return {r["market_id"] for r in rows}
+
+    # --- entry blocks -------------------------------------------------------
+    def block_entry(self, market_id: str, until: datetime, reason: str) -> None:
+        with self._db:
+            self._db.execute(
+                "INSERT OR REPLACE INTO entry_blocks (market_id, until, reason) VALUES (?, ?, ?)",
+                (market_id, _iso(until), reason),
+            )
+
+    def blocked_ids(self, now: datetime) -> set[str]:
+        rows = self._db.execute("SELECT market_id FROM entry_blocks WHERE until > ?", (_iso(now),)).fetchall()
         return {r["market_id"] for r in rows}

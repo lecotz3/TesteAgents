@@ -6,6 +6,7 @@ import pytest
 from desk.analyst.base import AnalystError
 from desk.config import Settings
 from desk.cycle import Deps, run_cycle
+from desk.executor.base import ExecutionUncertain
 from desk.executor.paper import PaperExecutor
 from desk.journal import Journal
 from desk.store import Store
@@ -267,3 +268,36 @@ def test_max_open_positions_stops_scanning(env):
     analyst = FakeAnalyst({m.id: 0.74})
     report = run_cycle(make_deps(tmp_path, store, [m], books, analyst))
     assert report.entries == 0 and analyst.calls == [] and report.scanned == 0
+
+
+def test_exited_market_is_not_reentered_during_cooldown(env):
+    tmp_path, store = env
+    m = make_market()
+    open_position(store)  # YES at 0.62, entered on fair 0.74
+    store.save_analysis(make_analysis(created_at=NOW - timedelta(hours=2)))
+    analyst = FakeAnalyst({m.id: 0.80})  # +6pp: exits, yet the edge (18pp) would buy straight back
+    report = run_cycle(make_deps(tmp_path, store, [m], books_for(m), analyst))
+    assert report.exits == 1 and report.entries == 0
+    later = make_deps(tmp_path, store, [m], books_for(m), analyst)
+    later.now = lambda: NOW + timedelta(hours=7)
+    assert run_cycle(later).entries == 1
+
+
+class UncertainBuys(PaperExecutor):
+    mode = "live"
+
+    def buy(self, *args, **kwargs):
+        raise ExecutionUncertain("resultado incerto (TransportError); confira a carteira no Polymarket")
+
+
+def test_uncertain_live_buy_alerts_and_blocks_the_market(env):
+    tmp_path, store = env
+    m = make_market()
+    deps = make_deps(tmp_path, store, [m], books_for(m), FakeAnalyst({m.id: 0.74}))
+    deps.executor = UncertainBuys()
+    run_cycle(deps)
+    assert store.open_positions() == []
+    assert any("confira" in msg for msg in deps.notifier.sent)
+    deps.executor = PaperExecutor()  # would buy if the market were not blocked
+    deps.now = lambda: NOW + timedelta(hours=1)
+    assert run_cycle(deps).entries == 0

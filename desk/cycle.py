@@ -13,7 +13,7 @@ from desk.analyst.base import Analyst, AnalystError
 from desk.clob import simulate_sell
 from desk.config import Settings
 from desk.decide import PREFILTER_SLACK_PP, EntryPlan, Skip, evaluate_entry, quick_edge_pp
-from desk.executor.base import ExecutionError, Executor
+from desk.executor.base import ExecutionError, ExecutionUncertain, Executor
 from desk.exits import exit_reason, settlement_price
 from desk.journal import Journal, format_entry, format_exit, format_note
 from desk.models import Analysis, Market, OrderBook, Position, TradeRecord
@@ -24,6 +24,7 @@ from desk.store import Store
 log = logging.getLogger("desk")
 
 MAX_ANALYST_FAILURES_PER_CYCLE = 3
+UNCERTAIN_ORDER_BLOCK_HOURS = 24  # until the user checks the wallet
 
 
 class MarketSource(Protocol):
@@ -246,6 +247,8 @@ class _Cycle:
                 continue
             self.close(pos, price=fill.avg_price, proceeds=fill.notional - fill.fee, fee=fill.fee,
                        shares=fill.shares, action="SELL", reason=reason)
+            self.store.block_entry(pos.market_id, self.now + timedelta(hours=self.s.exits.reentry_cooldown_hours),
+                                   f"saiu ({reason})")
             self.books.pop(pos.token_id, None)
             self.report.exits += 1
 
@@ -260,7 +263,8 @@ class _Cycle:
             self.error(f"varredura falhou: {type(exc).__name__}")
             return
         self.report.scanned = len(markets)
-        candidates = screen(markets, self.now, self.s.scan, {p.market_id for p in open_positions})
+        excluded = {p.market_id for p in open_positions} | self.store.blocked_ids(self.now)
+        candidates = screen(markets, self.now, self.s.scan, excluded)
         candidates.sort(key=lambda m: m.volume_24h, reverse=True)
         self.report.candidates = len(candidates)
 
@@ -304,6 +308,9 @@ class _Cycle:
             fill = self.d.executor.buy(market, plan.token_id, plan.shares, plan.limit_price, book)
         except ExecutionError as exc:
             self.error(f"compra falhou em {market.slug}: {exc}")
+            if isinstance(exc, ExecutionUncertain):
+                self.store.block_entry(market.id, self.now + timedelta(hours=UNCERTAIN_ORDER_BLOCK_HOURS),
+                                       "ordem incerta")
             if self.d.executor.mode == "live":
                 self.d.notifier.send(f"Compra falhou em {market.question}: {exc}")
             return

@@ -54,6 +54,7 @@ class ExitSettings(BaseModel):
     exit_edge_closed_pp: float = Field(1.0, ge=0)
     exit_fair_change_pp: float = Field(5.0, gt=0)
     exit_hours_before_resolution: float = Field(1.0, ge=0)
+    reentry_cooldown_hours: float = Field(6.0, ge=0)  # no buying back a market right after selling it
 
 
 class MonthlySettings(BaseModel):
