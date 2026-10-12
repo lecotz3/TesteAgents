@@ -1,0 +1,40 @@
+# Polymarket Desk — parâmetros. Valores do guia original salvo indicação.
+mode = "paper"                 # "paper" ou "live" (live exige também DESK_LIVE=I_UNDERSTAND no .env)
+bankroll_start_usd = 100.0     # banca inicial (US$50 do guia fica abaixo da ordem mínima de 5 cotas)
+state_dir = "state"            # banco SQLite, trades.txt e logs (relativo a este arquivo)
+
+[scan]
+max_markets_scanned = 1000
+min_liquidity_usd = 5000.0
+min_hours_to_resolution = 2.0
+price_band = [0.03, 0.97]      # ignora mercados quase decididos
+skip_categories = []           # ex.: ["crypto", "sports"]
+allow_categories = []          # vazio = todas; ex.: ["weather"] para o pivô do guia
+
+[analysis]
+analyst = "claude"             # "claude" (Claude Code) ou "codex" (Codex CLI)
+claude_model = "sonnet"
+codex_model = ""               # vazio = modelo padrão do Codex
+analyses_per_cycle = 6         # mercados novos analisados por ciclo (protege a cota do plano)
+analysis_ttl_hours = 3.0
+held_reanalysis_minutes = 60
+analyst_failure_cooldown_minutes = 30
+analyst_timeout_seconds = 300
+min_confidence = "medium"      # "low", "medium" ou "high"
+
+[risk]
+min_edge_pp = 8.0
+max_exit_slippage = 0.03
+kelly_fraction = 0.5
+max_position_pct = 0.06
+max_open_positions = 5
+drawdown_halt = 0.40
+
+[exits]
+exit_edge_closed_pp = 1.0
+exit_fair_change_pp = 5.0
+exit_hours_before_resolution = 1.0
+
+[monthly]
+subscription_cost_usd = 20.0
+monthly_reserve_usd = 50.0
