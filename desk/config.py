@@ -34,6 +34,7 @@ class AnalysisSettings(BaseModel):
     claude_model: str = "sonnet"
     codex_model: str = ""
     analyses_per_cycle: int = Field(6, ge=0)
+    max_analyses_per_day: int = Field(150, ge=0)  # hard ceiling on analyst calls in any 24h window
     analysis_ttl_hours: float = Field(3.0, gt=0)
     entry_analysis_max_age_minutes: int = Field(20, ge=0)  # older analyses are redone before buying
     held_reanalysis_minutes: int = Field(60, gt=0)

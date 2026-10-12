@@ -25,6 +25,7 @@ log = logging.getLogger("desk")
 
 MAX_ANALYST_FAILURES_PER_CYCLE = 3
 UNCERTAIN_ORDER_BLOCK_HOURS = 24  # until the user checks the wallet
+DEAD_ANALYST_ALERT_CYCLES = 3  # cycles in a row where every analyst call failed
 
 
 class MarketSource(Protocol):
@@ -84,6 +85,8 @@ class _Cycle:
         self.now = deps.now()
         self.report = CycleReport()
         self.analyst_failures = 0
+        self.analyst_calls = 0
+        self.cap_reached = False
         self.books: dict[str, OrderBook] = {}
         self.held_markets: dict[str, Market] = {}
 
@@ -95,6 +98,7 @@ class _Cycle:
         if not self.store.is_halted():
             self.scan_and_enter()
         self.mark_to_market()
+        self.track_analyst_health()
         self.report.halted = self.store.is_halted()
         for error in self.report.errors:
             log.warning(error)
@@ -110,9 +114,29 @@ class _Cycle:
         return self.books[token_id]
 
     def analyst_available(self) -> bool:
-        return self.analyst_failures < MAX_ANALYST_FAILURES_PER_CYCLE
+        if self.analyst_failures >= MAX_ANALYST_FAILURES_PER_CYCLE or self.cap_reached:
+            return False
+        used = self.store.analyst_calls_since(self.now - timedelta(hours=24))
+        if used >= self.s.analysis.max_analyses_per_day:
+            self.cap_reached = True
+            self.report.skips["daily_analysis_cap"] += 1
+            return False
+        return True
+
+    def track_analyst_health(self) -> None:
+        if self.analyst_calls == 0:
+            return
+        dead = 0 if self.report.analyzed else int(self.store.get_meta("analyst_dead_cycles") or 0) + 1
+        self.store.set_meta("analyst_dead_cycles", str(dead))
+        if dead == DEAD_ANALYST_ALERT_CYCLES:
+            self.d.notifier.send(
+                f"O analista falhou em todas as chamadas nos últimos {dead} ciclos (limite do plano, login ou "
+                "timeout?). O desk segue com saídas, mas sem análises novas. Veja state/desk.log."
+            )
 
     def analyze(self, market: Market) -> Analysis | None:
+        self.analyst_calls += 1
+        self.store.record_analyst_call(self.now)
         try:
             analysis = self.d.analyst.estimate(market, self.now)
         except AnalystError as exc:

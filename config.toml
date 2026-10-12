@@ -16,6 +16,7 @@ analyst = "claude"             # "claude" (Claude Code) ou "codex" (Codex CLI)
 claude_model = "sonnet"
 codex_model = ""               # vazio = modelo padrão do Codex
 analyses_per_cycle = 3         # mercados novos por ciclo (~18/h). Pro: 2. Max: até 6. Ver docs/PENDENCIAS.md
+max_analyses_per_day = 150     # teto de chamadas ao analista em 24h (protege o seu plano)
 analysis_ttl_hours = 3.0
 entry_analysis_max_age_minutes = 20   # antes de comprar, refaz análise mais velha que isso
 held_reanalysis_minutes = 60

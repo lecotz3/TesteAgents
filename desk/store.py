@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS analyses (
 );
 CREATE TABLE IF NOT EXISTS analysis_failures (market_id TEXT PRIMARY KEY, failed_at TEXT NOT NULL, error TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS equity (ts TEXT NOT NULL, equity REAL NOT NULL, cash REAL NOT NULL, positions_value REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS analyst_calls (ts TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS entry_blocks (market_id TEXT PRIMARY KEY, until TEXT NOT NULL, reason TEXT NOT NULL);
 """
 
@@ -258,3 +259,11 @@ class Store:
     def blocked_ids(self, now: datetime) -> set[str]:
         rows = self._db.execute("SELECT market_id FROM entry_blocks WHERE until > ?", (_iso(now),)).fetchall()
         return {r["market_id"] for r in rows}
+
+    # --- analyst usage ------------------------------------------------------
+    def record_analyst_call(self, ts: datetime) -> None:
+        with self._db:
+            self._db.execute("INSERT INTO analyst_calls (ts) VALUES (?)", (_iso(ts),))
+
+    def analyst_calls_since(self, cutoff: datetime) -> int:
+        return int(self._db.execute("SELECT COUNT(*) FROM analyst_calls WHERE ts >= ?", (_iso(cutoff),)).fetchone()[0])

@@ -22,6 +22,8 @@ Cada ciclo analisa até `analyses_per_cycle` mercados novos (≈30–60 s cada, 
 
 - **Claude Pro:** baixe para `analyses_per_cycle = 2` em `config.toml`, senão você vai bater o limite de uso e o seu Claude Code pessoal também trava.
 - **Claude Max:** pode subir até 6 (≈36 por hora), o que cobre mais mercados por dia.
+- Teto diário: `max_analyses_per_day = 150` (em qualquer janela de 24h). Ao atingir, o robô para de analisar e só gerencia as saídas.
+- Se o analista falhar em todas as chamadas por 3 ciclos seguidos, você recebe um aviso no Telegram.
 - Sinal de exagero: `analista falhou` em `state\desk.log`, ou o seu Claude dizendo que atingiu o limite.
 - Para pausar sem desinstalar, abra o Agendador de Tarefas e desative `PolymarketDesk`.
 

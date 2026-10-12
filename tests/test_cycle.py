@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from desk.analyst.base import AnalystError
-from desk.config import Settings
+from desk.config import AnalysisSettings, Settings
 from desk.cycle import Deps, run_cycle
 from desk.executor.base import ExecutionUncertain
 from desk.executor.paper import PaperExecutor
@@ -331,3 +331,35 @@ def test_buys_only_one_market_per_event(env):
     report = run_cycle(make_deps(tmp_path, store, [hold, hike], books, FakeAnalyst({"1": 0.74, "2": 0.74})))
     assert report.entries == 1
     assert store.open_positions()[0].event_id == "606422"
+
+
+def ten_markets():
+    return [make_market(id=str(i), slug=f"m{i}", token_ids=(f"{i}a", f"{i}b"), volume_24h=float(i)) for i in range(10)]
+
+
+def test_daily_analysis_cap_protects_the_plan(env):
+    tmp_path, store = env
+    markets = ten_markets()
+    analyst = FakeAnalyst({m.id: 0.62 for m in markets})
+    settings = Settings(analysis=AnalysisSettings(max_analyses_per_day=4))
+    deps = make_deps(tmp_path, store, markets, {}, analyst, settings)
+    report = run_cycle(deps)
+    deps.now = lambda: NOW + timedelta(minutes=10)
+    run_cycle(deps)
+    assert len(analyst.calls) == 4
+    assert report.skips["daily_analysis_cap"] == 1
+    deps.now = lambda: NOW + timedelta(hours=25)
+    run_cycle(deps)
+    assert len(analyst.calls) > 4
+
+
+def test_alerts_once_when_the_analyst_keeps_failing(env):
+    tmp_path, store = env
+    markets = ten_markets()
+    analyst = FakeAnalyst({m.id: AnalystError("usage limit reached") for m in markets})
+    deps = make_deps(tmp_path, store, markets, {}, analyst)
+    for i in range(4):
+        deps.now = lambda i=i: NOW + timedelta(minutes=31 * i)  # past the per-market cooldown each time
+        run_cycle(deps)
+    alerts = [msg for msg in deps.notifier.sent if "analista" in msg.lower()]
+    assert len(alerts) == 1
