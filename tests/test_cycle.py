@@ -363,3 +363,31 @@ def test_alerts_once_when_the_analyst_keeps_failing(env):
         run_cycle(deps)
     alerts = [msg for msg in deps.notifier.sent if "analista" in msg.lower()]
     assert len(alerts) == 1
+
+
+def test_position_without_bids_is_not_marked_at_zero(env):
+    tmp_path, store = env
+    m = make_market()
+    open_position(store, shares=50, avg_price=0.62)
+    store.save_analysis(make_analysis(created_at=NOW))
+    no_bids = {"111": make_book("111", bids=(), asks=((0.70, 10.0),)), "222": make_book("222", bids=(), asks=())}
+    report = run_cycle(make_deps(tmp_path, store, [m], no_bids, FakeAnalyst()))
+    assert report.equity == pytest.approx(100.0)
+    assert not report.halted
+
+
+class GarbageBooks:
+    def get_book(self, token_id):
+        raise ValueError("Expecting value: line 1 column 1 (char 0)")  # 200 with an HTML body
+
+
+def test_unparseable_book_does_not_crash_the_cycle(env):
+    tmp_path, store = env
+    m = make_market(end_date=NOW + timedelta(minutes=30))
+    open_position(store, end_date=m.end_date)
+    store.save_analysis(make_analysis(created_at=NOW))
+    deps = make_deps(tmp_path, store, [m], {}, FakeAnalyst())
+    deps.books = GarbageBooks()
+    report = run_cycle(deps)
+    assert report.equity == pytest.approx(100.0)
+    assert any("livro indisponível" in e for e in report.errors)

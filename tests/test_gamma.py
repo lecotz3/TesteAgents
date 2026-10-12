@@ -111,3 +111,7 @@ def test_event_id_groups_sibling_markets():
     assert parse_market(raw_market(events=[{"id": "606422", "slug": "fed-decision"}])).event_id == "606422"
     assert parse_market(raw_market(negRiskMarketID="0x09ac")).event_id == "0x09ac"
     assert parse_market(raw_market()).event_id is None
+
+
+def test_malformed_market_is_skipped_not_fatal():
+    assert parse_market(raw_market(feesEnabled=True, feeSchedule="oops")) is None

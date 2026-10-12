@@ -24,6 +24,7 @@ from desk.store import Store
 log = logging.getLogger("desk")
 
 MAX_ANALYST_FAILURES_PER_CYCLE = 3
+FETCH_ERRORS = (httpx.HTTPError, ValueError)  # network failures and 200s with a body we cannot parse
 UNCERTAIN_ORDER_BLOCK_HOURS = 24  # until the user checks the wallet
 DEAD_ANALYST_ALERT_CYCLES = 3  # cycles in a row where every analyst call failed
 
@@ -163,7 +164,7 @@ class _Cycle:
         for pos in self.store.open_positions():
             try:
                 market = self.d.markets.market_by_id(pos.market_id)
-            except httpx.HTTPError as exc:
+            except FETCH_ERRORS as exc:
                 self.error(f"gamma falhou para {pos.slug}: {type(exc).__name__}")
                 continue
             if market is None:
@@ -187,10 +188,12 @@ class _Cycle:
         for pos in self.store.open_positions():
             try:
                 bid = self.book(pos.token_id).best_bid
-            except httpx.HTTPError as exc:
+            except FETCH_ERRORS as exc:
                 self.error(f"livro indisponível para {pos.slug}: {type(exc).__name__}")
                 bid = pos.avg_price  # neutral fallback: an outage must not look like a loss
-            value += pos.shares * (bid if bid is not None else 0.0)
+            if bid is None:
+                bid = pos.avg_price  # an empty bid side is missing data, not a price of zero
+            value += pos.shares * bid
         equity = cash + value
         self.store.record_equity(self.now, equity, cash, value)
         self.report.equity = equity
@@ -250,7 +253,7 @@ class _Cycle:
             analysis = self.refresh_held_analysis(pos, market)
             try:
                 book = self.book(pos.token_id)
-            except httpx.HTTPError as exc:
+            except FETCH_ERRORS as exc:
                 self.error(f"livro indisponível para {pos.slug}: {type(exc).__name__}")
                 continue
             reason = exit_reason(pos, book, analysis, self.now, self.s.exits)
@@ -283,7 +286,7 @@ class _Cycle:
             return
         try:
             markets = self.d.markets.active_markets(self.s.scan.max_markets_scanned)
-        except httpx.HTTPError as exc:
+        except FETCH_ERRORS as exc:
             self.error(f"varredura falhou: {type(exc).__name__}")
             return
         self.report.scanned = len(markets)
@@ -327,7 +330,7 @@ class _Cycle:
                     continue
             try:
                 books = (self.book(market.token_ids[0]), self.book(market.token_ids[1]))
-            except httpx.HTTPError as exc:
+            except FETCH_ERRORS as exc:
                 self.error(f"livro indisponível para {market.slug}: {type(exc).__name__}")
                 continue
             plan = evaluate_entry(

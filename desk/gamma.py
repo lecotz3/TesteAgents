@@ -57,6 +57,14 @@ def _event_id(raw: dict) -> str | None:
 
 
 def parse_market(raw: dict) -> Market | None:
+    """A Market from one Gamma record, or None when the record is not a usable binary market."""
+    try:
+        return _parse_market(raw)
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def _parse_market(raw: dict) -> Market | None:
     outcomes = _json_list(raw.get("outcomes"))
     tokens = _json_list(raw.get("clobTokenIds"))
     prices = _json_list(raw.get("outcomePrices"))
