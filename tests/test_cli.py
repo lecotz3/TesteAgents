@@ -130,3 +130,12 @@ def test_live_mode_refuses_the_paper_state_dir(tmp_path):
     paper.http.close()
     with pytest.raises(cli.ConfigError, match="state"):
         cli.build_app(write_config(tmp_path, 'mode = "live"\n'), tmp_path / ".env")
+
+
+def test_crash_while_building_the_cycle_is_counted(app, monkeypatch):
+    def broken_executor(settings, secrets, http):
+        raise RuntimeError("SDK could not derive credentials")
+
+    monkeypatch.setattr(cli, "make_executor", broken_executor)
+    assert cli.cmd_cycle(app) == 2
+    assert app.store.consecutive_failures() == 1

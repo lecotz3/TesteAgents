@@ -113,6 +113,10 @@ def cmd_cycle(app: App) -> int:
             log.error("configuração inválida: %s", exc)
             _record_failure(app, str(exc))
             return 2
+        except Exception as exc:  # noqa: BLE001 - e.g. the live SDK failing to connect; never die silently
+            log.exception("não foi possível montar o ciclo")
+            _record_failure(app, f"{type(exc).__name__}: {exc}")
+            return 2
         try:
             report = run_cycle(deps)
         except Exception as exc:  # noqa: BLE001 - every crash must be counted and reported
