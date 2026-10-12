@@ -16,6 +16,8 @@ SCHEMA_PATH = HERE / "schema.json"
 PROMPT_PATH = HERE / "prompt.md"
 POSTMORTEM_PATH = HERE / "postmortem.md"
 SECRET_PREFIXES = ("POLY_", "DESK_", "TELEGRAM_")
+# With an API key in the environment the CLIs bill the API instead of the user's subscription.
+API_KEY_VARS = {"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY"}
 MAX_EVIDENCE = 5
 
 
@@ -94,5 +96,5 @@ def parse_analysis(data: object, *, market_id: str, backend: str, now: datetime)
 
 
 def clean_env(env: Mapping[str, str]) -> dict[str, str]:
-    """Environment for the analyst subprocess: everything except the desk's own secrets."""
-    return {k: v for k, v in env.items() if not k.upper().startswith(SECRET_PREFIXES)}
+    """Environment for the analyst subprocess: everything except the desk's secrets and API keys."""
+    return {k: v for k, v in env.items() if not k.upper().startswith(SECRET_PREFIXES) and k.upper() not in API_KEY_VARS}

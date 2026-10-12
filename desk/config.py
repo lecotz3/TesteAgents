@@ -74,6 +74,14 @@ class Settings(BaseModel):
     exits: ExitSettings = Field(default_factory=ExitSettings)
     monthly: MonthlySettings = Field(default_factory=MonthlySettings)
 
+    @model_validator(mode="after")
+    def _no_codex_with_money(self) -> "Settings":
+        # Codex's read-only sandbox can still read local files (the .env with the wallet key), and market rules are
+        # attacker-controlled text; the Claude backend only gets WebSearch/WebFetch.
+        if self.mode == "live" and self.analysis.analyst == "codex":
+            raise ValueError('analyst = "codex" não é permitido com mode = "live"; use analyst = "claude"')
+        return self
+
 
 def load_settings(path: Path) -> Settings:
     try:

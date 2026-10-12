@@ -142,3 +142,13 @@ def test_codex_without_output_file_raises():
 def test_make_analyst_picks_backend():
     assert make_analyst(AnalysisSettings()).name == "claude"
     assert make_analyst(AnalysisSettings(analyst="codex")).name == "codex"
+
+
+def test_clean_env_drops_api_keys_so_the_subscription_is_used():
+    env = {"ANTHROPIC_API_KEY": "a", "ANTHROPIC_AUTH_TOKEN": "b", "OPENAI_API_KEY": "c", "PATH": "p"}
+    assert clean_env(env) == {"PATH": "p"}
+
+
+def test_prompt_forbids_looking_up_market_odds():
+    prompt = build_estimate_prompt(make_market(), NOW)
+    assert "Polymarket" in prompt and "Kalshi" in prompt and "odds" in prompt

@@ -69,3 +69,10 @@ def test_secrets_never_show_private_key():
 
 def test_wallet_address_comes_from_poly_wallet():
     assert load_secrets({"POLY_WALLET": " 0xabc "}).poly_wallet == "0xabc"
+
+
+def test_codex_is_refused_in_live_mode(tmp_path):
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('mode = "live"\n[analysis]\nanalyst = "codex"\n', encoding="utf-8")
+    with pytest.raises(ConfigError, match="codex"):
+        load_settings(cfg)
