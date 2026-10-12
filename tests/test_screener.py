@@ -15,6 +15,8 @@ S = ScanSettings()
     ({"accepting_orders": False}, "not_tradable"),
     ({"liquidity": 4999.0}, "low_liquidity"),
     ({"end_date": NOW + timedelta(hours=1, minutes=59)}, "resolves_too_soon"),
+    ({"game_start": NOW + timedelta(hours=1, minutes=59)}, "resolves_too_soon"),
+    ({"game_start": NOW - timedelta(hours=1)}, "resolves_too_soon"),
     ({"outcome_prices": (0.98, 0.02)}, "price_out_of_band"),
     ({"outcome_prices": (0.02, 0.98)}, "price_out_of_band"),
     ({"description": "   "}, "no_rules"),

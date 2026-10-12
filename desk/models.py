@@ -29,6 +29,14 @@ class Market:
     min_order_size: float
     tick_size: float
     neg_risk: bool
+    game_start: datetime | None = None  # sports: the result starts moving live at kickoff
+
+    @property
+    def trade_deadline(self) -> datetime:
+        """When the desk must be out: kickoff for games (web research goes stale in-play), else the end date."""
+        if self.game_start is None:
+            return self.end_date
+        return min(self.end_date, self.game_start)
 
 
 @dataclass(frozen=True)

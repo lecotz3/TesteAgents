@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 import httpx
 import pytest
 import respx
@@ -92,3 +94,14 @@ def test_market_by_id_and_slug():
         assert gamma.market_by_id("1001").id == "1001"
         assert gamma.market_by_id("999") is None
         assert gamma.market_by_slug("will-it-rain-in-nyc").slug == "will-it-rain-in-nyc"
+
+
+def test_sports_market_trades_only_until_game_start():
+    m = parse_market(raw_market(gameStartTime="2026-10-12 21:00:00+00"))
+    assert m.game_start == datetime(2026, 10, 12, 21, 0, tzinfo=timezone.utc)
+    assert m.trade_deadline == m.game_start  # endDate is two days later
+
+
+def test_market_without_game_trades_until_end_date():
+    m = parse_market(raw_market())
+    assert m.game_start is None and m.trade_deadline == m.end_date

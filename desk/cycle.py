@@ -314,7 +314,7 @@ class _Cycle:
             outcome_index=plan.outcome_index, outcome=market.outcomes[plan.outcome_index], token_id=plan.token_id,
             shares=fill.shares, avg_price=fill.avg_price, fee_paid=fill.fee, entry_fair_prob=plan.q,
             exit_condition=analysis.exit_condition, resolution_source=analysis.official_resolution_source or "",
-            end_date=market.end_date, opened_at=self.now,
+            end_date=market.trade_deadline, opened_at=self.now,
         )
         pos.id = self.store.add_position(pos)
         self.store.add_trade(TradeRecord(

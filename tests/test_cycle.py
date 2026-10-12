@@ -113,6 +113,15 @@ def test_enters_when_fair_value_beats_price_by_more_than_8pp(env):
     assert "ENTRADA [PAPER]" in text and "Condição de saída" in text
 
 
+def test_position_in_a_game_must_be_closed_before_kickoff(env):
+    tmp_path, store = env
+    kickoff = NOW + timedelta(hours=5)
+    m = make_market(game_start=kickoff)
+    run_cycle(make_deps(tmp_path, store, [m], books_for(m), FakeAnalyst({m.id: 0.74})))
+    [pos] = store.open_positions()
+    assert pos.end_date == kickoff
+
+
 def test_small_gap_is_filtered_before_fetching_books(env):
     tmp_path, store = env
     m = make_market()

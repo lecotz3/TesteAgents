@@ -14,7 +14,7 @@ def rejection_reason(m: Market, now: datetime, s: ScanSettings, held_ids: set[st
         return "already_held"
     if m.liquidity < s.min_liquidity_usd:
         return "low_liquidity"
-    if (m.end_date - now).total_seconds() / 3600 < s.min_hours_to_resolution:
+    if (m.trade_deadline - now).total_seconds() / 3600 < s.min_hours_to_resolution:
         return "resolves_too_soon"
     low, high = s.price_band
     if not low <= m.outcome_prices[0] <= high:

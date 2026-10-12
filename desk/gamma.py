@@ -83,6 +83,7 @@ def parse_market(raw: dict) -> Market | None:
         min_order_size=_float(raw.get("orderMinSize"), 5.0),
         tick_size=_float(raw.get("orderPriceMinTickSize"), 0.01),
         neg_risk=bool(raw.get("negRisk")),
+        game_start=_parse_dt(raw.get("gameStartTime")),
     )
 
 
