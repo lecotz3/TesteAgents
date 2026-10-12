@@ -35,6 +35,7 @@ class AnalysisSettings(BaseModel):
     codex_model: str = ""
     analyses_per_cycle: int = Field(6, ge=0)
     analysis_ttl_hours: float = Field(3.0, gt=0)
+    entry_analysis_max_age_minutes: int = Field(20, ge=0)  # older analyses are redone before buying
     held_reanalysis_minutes: int = Field(60, gt=0)
     analyst_failure_cooldown_minutes: int = Field(30, ge=0)
     analyst_timeout_seconds: int = Field(300, gt=0)

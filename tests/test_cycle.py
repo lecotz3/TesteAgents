@@ -301,3 +301,23 @@ def test_uncertain_live_buy_alerts_and_blocks_the_market(env):
     deps.executor = PaperExecutor()  # would buy if the market were not blocked
     deps.now = lambda: NOW + timedelta(hours=1)
     assert run_cycle(deps).entries == 0
+
+
+def test_old_analysis_is_refreshed_before_buying(env):
+    tmp_path, store = env
+    m = make_market()
+    store.save_analysis(make_analysis(fair_prob=0.74, created_at=NOW - timedelta(hours=2, minutes=50)))
+    analyst = FakeAnalyst({m.id: 0.63})  # the news moved: fair value is now at the price
+    report = run_cycle(make_deps(tmp_path, store, [m], books_for(m), analyst))
+    assert analyst.calls == [m.id]
+    assert report.entries == 0
+
+
+def test_refreshed_analysis_that_still_shows_edge_buys(env):
+    tmp_path, store = env
+    m = make_market()
+    store.save_analysis(make_analysis(fair_prob=0.74, created_at=NOW - timedelta(hours=1)))
+    analyst = FakeAnalyst({m.id: 0.75})
+    report = run_cycle(make_deps(tmp_path, store, [m], books_for(m), analyst))
+    assert analyst.calls == [m.id]
+    assert report.entries == 1

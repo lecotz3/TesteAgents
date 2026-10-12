@@ -288,6 +288,15 @@ class _Cycle:
             if quick_edge_pp(market, analysis) <= self.s.risk.min_edge_pp - PREFILTER_SLACK_PP:
                 self.report.skips["prefilter_no_edge"] += 1
                 continue
+            if self.now - analysis.created_at > timedelta(minutes=a.entry_analysis_max_age_minutes):
+                # Never buy on a view older than the news: redo it, it is rare and worth the call.
+                analysis = self.analyze(market) if self.analyst_available() else None
+                if analysis is None:
+                    self.report.skips["stale_analysis"] += 1
+                    continue
+                if quick_edge_pp(market, analysis) <= self.s.risk.min_edge_pp - PREFILTER_SLACK_PP:
+                    self.report.skips["prefilter_no_edge"] += 1
+                    continue
             try:
                 books = (self.book(market.token_ids[0]), self.book(market.token_ids[1]))
             except httpx.HTTPError as exc:
