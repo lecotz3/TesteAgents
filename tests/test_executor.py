@@ -3,7 +3,7 @@ import pytest
 
 from desk.config import ConfigError, Secrets, Settings
 from desk.executor import LIVE_CONFIRMATION, make_executor
-from desk.executor.base import ExecutionError
+from desk.executor.base import ExecutionError, ExecutionUncertain
 from desk.executor.live import LiveExecutor
 from desk.executor.paper import PaperExecutor
 from desk.geoblock import GeoStatus
@@ -65,6 +65,24 @@ def test_live_buy_parses_matched_order():
     assert fill.fee == pytest.approx(10 * 0.05 * 0.62 * 0.38)
     call = trader.calls[0]
     assert call["side"] == "BUY" and call["price"] == 0.62 and call["size"] == 10 and call["token_id"] == "111"
+    assert call["spend"] == pytest.approx(6.2)
+
+
+def test_live_buy_spends_only_what_paper_would_pay():
+    # 11 shares at 0.50, the rest deep at 0.90: the limit is the worst level, the budget is the walked cost.
+    book = make_book(asks=((0.50, 11.0), (0.90, 100.0)))
+    trader = FakeTrader({"success": True, "status": "matched", "makingAmount": "5.66", "takingAmount": "11.18"})
+    LiveExecutor(trader, allowed).buy(make_market(), "111", 11.18, 0.90, book)
+    call = trader.calls[0]
+    assert call["price"] == 0.90
+    assert call["spend"] == pytest.approx(11 * 0.50 + 0.18 * 0.90)
+
+
+def test_live_buy_refuses_when_book_cannot_fill_within_limit():
+    trader = FakeTrader({"success": True, "status": "matched"})
+    with pytest.raises(ExecutionError):
+        LiveExecutor(trader, allowed).buy(make_market(), "111", 10, 0.63, make_book(asks=((0.62, 5.0), (0.70, 100.0))))
+    assert trader.calls == []
 
 
 def test_live_sell_maps_amounts():
@@ -94,8 +112,15 @@ def test_live_client_exception_becomes_execution_error():
         def place_fok(self, **kwargs):
             raise RuntimeError("PolyApiException 400")
 
-    with pytest.raises(ExecutionError):
+    with pytest.raises(ExecutionUncertain):
         LiveExecutor(Exploding({}), allowed).buy(make_market(), "111", 10, 0.62, make_book())
+
+
+def test_explicit_rejection_is_not_uncertain():
+    trader = FakeTrader({"success": False, "errorMsg": "not enough balance"})
+    with pytest.raises(ExecutionError) as info:
+        LiveExecutor(trader, allowed).buy(make_market(), "111", 10, 0.62, make_book())
+    assert not isinstance(info.value, ExecutionUncertain)
 
 
 def test_make_executor_defaults_to_paper():

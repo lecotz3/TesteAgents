@@ -2,7 +2,7 @@ from decimal import Decimal
 
 import pytest
 
-from desk.executor.base import ExecutionError
+from desk.executor.base import ExecutionError, ExecutionUncertain
 from desk.executor.live import LiveExecutor
 from desk.executor.sdk import SdkTrader
 from desk.geoblock import GeoStatus
@@ -18,17 +18,19 @@ def allowed():
 
 def test_buy_spends_at_most_the_sized_cost_with_a_price_cap():
     client = FakeClient(Accepted("matched", Decimal("6.2"), Decimal("10")))
-    SdkTrader(client).place_fok(token_id="111", side="BUY", price=0.62, size=10.004, neg_risk=False, tick_size=0.01)
+    SdkTrader(client).place_fok(token_id="111", side="BUY", price=0.62, size=10.004, spend=6.2049,
+                                neg_risk=False, tick_size=0.01)
     order = client.orders[0]
     assert order["asset_id"] == "111" and order["side"] == "BUY" and order["order_type"] == "FOK"
-    assert Decimal(order["amount"]) == Decimal("6.20")  # floor(10.004 * 0.62) to cents
+    assert Decimal(order["amount"]) == Decimal("6.20")  # the planned spend, floored to cents
     assert Decimal(order["max_price"]) == Decimal("0.62")
     assert "shares" not in order and "min_price" not in order
 
 
 def test_sell_sells_floored_shares_with_a_price_floor():
     client = FakeClient(Accepted("matched", Decimal("10"), Decimal("6.1")))
-    SdkTrader(client).place_fok(token_id="222", side="SELL", price=0.61, size=10.009, neg_risk=True, tick_size=0.001)
+    SdkTrader(client).place_fok(token_id="222", side="SELL", price=0.61, size=10.009, spend=None,
+                                neg_risk=True, tick_size=0.001)
     order = client.orders[0]
     assert order["asset_id"] == "222" and order["side"] == "SELL" and order["order_type"] == "FOK"
     assert Decimal(order["shares"]) == Decimal("10.00")
@@ -48,10 +50,50 @@ def test_rejected_order_becomes_execution_error_with_reason():
         LiveExecutor(SdkTrader(client), allowed).buy(make_market(), "111", 10, 0.62, make_book())
 
 
-def test_resting_order_is_not_treated_as_filled():
-    client = FakeClient(Accepted("live", Decimal("0"), Decimal("0")))
-    with pytest.raises(ExecutionError):
+@pytest.mark.parametrize("status", ["live", "delayed"])
+def test_accepted_but_unconfirmed_order_is_uncertain(status):
+    client = FakeClient(Accepted(status, Decimal("0"), Decimal("0")))
+    with pytest.raises(ExecutionUncertain):
         LiveExecutor(SdkTrader(client), allowed).buy(make_market(), "111", 10, 0.62, make_book())
+
+
+class InsufficientLiquidityError(Exception):
+    """Same name as the SDK's pre-trade error; raised before anything is posted."""
+
+
+class RequestRejectedError(Exception):
+    def __init__(self, message, *, status):
+        super().__init__(message)
+        self.status = status
+
+
+class TransportError(Exception):
+    pass
+
+
+class Raising(FakeClient):
+    def __init__(self, exc):
+        super().__init__()
+        self.exc = exc
+
+    def place_market_order(self, **kwargs):
+        raise self.exc
+
+
+@pytest.mark.parametrize("exc", [
+    InsufficientLiquidityError("not enough asks"),
+    RequestRejectedError("bad order", status=400),
+])
+def test_errors_that_prove_nothing_was_posted_become_plain_rejections(exc):
+    with pytest.raises(ExecutionError) as info:
+        LiveExecutor(SdkTrader(Raising(exc)), allowed).buy(make_market(), "111", 10, 0.62, make_book())
+    assert not isinstance(info.value, ExecutionUncertain)
+
+
+@pytest.mark.parametrize("exc", [TransportError("connection reset"), RequestRejectedError("gateway", status=502)])
+def test_errors_after_posting_are_uncertain(exc):
+    with pytest.raises(ExecutionUncertain):
+        LiveExecutor(SdkTrader(Raising(exc)), allowed).buy(make_market(), "111", 10, 0.62, make_book())
 
 
 def test_balance_is_converted_from_base_units():
@@ -97,6 +139,6 @@ def test_adapter_calls_match_the_real_sdk_signatures():
 def _recorded_orders():
     client = FakeClient(Accepted("matched", Decimal("1"), Decimal("1")))
     trader = SdkTrader(client)
-    trader.place_fok(token_id="111", side="BUY", price=0.5, size=10, neg_risk=False, tick_size=0.01)
-    trader.place_fok(token_id="111", side="SELL", price=0.5, size=10, neg_risk=False, tick_size=0.01)
+    trader.place_fok(token_id="111", side="BUY", price=0.5, size=10, spend=5.0, neg_risk=False, tick_size=0.01)
+    trader.place_fok(token_id="111", side="SELL", price=0.5, size=10, spend=None, neg_risk=False, tick_size=0.01)
     return client.orders

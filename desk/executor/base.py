@@ -10,6 +10,10 @@ class ExecutionError(Exception):
     """The order was not executed; nothing changed."""
 
 
+class ExecutionUncertain(ExecutionError):
+    """The order may have executed (e.g. the connection dropped after posting); the wallet must be checked."""
+
+
 class Executor(Protocol):
     mode: str
 

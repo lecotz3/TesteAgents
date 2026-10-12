@@ -9,6 +9,18 @@ from desk.executor.base import ExecutionError
 COLLATERAL_UNIT = 1_000_000  # pUSD has 6 decimals; balances come back in base units
 
 
+# SDK errors raised before the order reaches the matching engine, or an explicit 4xx refusal.
+_PRE_TRADE_ERRORS = {"UserInputError", "InsufficientLiquidityError", "InsufficientAllowanceError", "SigningError",
+                     "RateLimitError"}
+
+
+def _nothing_was_posted(exc: Exception) -> bool:
+    name = type(exc).__name__
+    if name == "RequestRejectedError":
+        return getattr(exc, "status", 500) < 500
+    return name in _PRE_TRADE_ERRORS
+
+
 def _floor2(x: float) -> str:
     return f"{math.floor(x * 100 + 1e-9) / 100:.2f}"
 
@@ -27,16 +39,23 @@ class SdkTrader:
             raise ExecutionError("modo real requer o pacote extra: uv sync --extra live") from exc
         return cls(SecureClient.create(private_key=private_key, wallet=wallet or None))
 
-    def place_fok(self, *, token_id: str, side: str, price: float, size: float, neg_risk: bool, tick_size: float) -> dict:
+    def place_fok(self, *, token_id: str, side: str, price: float, size: float, spend: float | None,
+                  neg_risk: bool, tick_size: float) -> dict:
         # The SDK resolves tick size and neg-risk from the market itself; amounts go as strings with 2 decimals.
-        if side == "BUY":
-            resp = self._client.place_market_order(
-                asset_id=token_id, side="BUY", amount=_floor2(size * price), max_price=f"{price:g}", order_type="FOK"
-            )
-        else:
-            resp = self._client.place_market_order(
-                asset_id=token_id, side="SELL", shares=_floor2(size), min_price=f"{price:g}", order_type="FOK"
-            )
+        try:
+            if side == "BUY":
+                assert spend is not None, "BUY needs the planned spend"
+                resp = self._client.place_market_order(
+                    asset_id=token_id, side="BUY", amount=_floor2(spend), max_price=f"{price:g}", order_type="FOK"
+                )
+            else:
+                resp = self._client.place_market_order(
+                    asset_id=token_id, side="SELL", shares=_floor2(size), min_price=f"{price:g}", order_type="FOK"
+                )
+        except Exception as exc:  # noqa: BLE001 - classify by SDK error name; the SDK is an optional extra
+            if _nothing_was_posted(exc):
+                return {"success": False, "status": "rejected", "errorMsg": f"{type(exc).__name__}: {exc}"}
+            raise
         if getattr(resp, "ok", False):
             return {
                 "success": True,
