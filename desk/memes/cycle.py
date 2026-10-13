@@ -28,6 +28,7 @@ log = logging.getLogger("desk")
 UNCERTAIN_BLOCK_HOURS = 24  # until the user checks the wallet
 PENDING_BUY = "pending_buy:"  # meta key prefix of buys whose answer was lost, by mint
 PENDING_BUY_MINUTES = 10  # a lost buy that has not shown up in the wallet by then never landed
+UNCERTAIN_SELL = "uncertain_sell:"  # meta key prefix of sells whose answer was lost, by position id
 DEAD_VETTER_ALERT_CYCLES = 3
 EXIT_LABELS = {
     "stop_loss": "stop-loss", "take_profit": "realização de lucro", "trailing_stop": "stop móvel",
@@ -292,7 +293,8 @@ class _MemeCycle:
                 log.info("memes: outra execução está vendendo agora; saídas ficam para ela")
                 return
             self.adopt_uncertain_buys()
-            self._manage_exits()
+            waiting = self.settle_uncertain_sells()
+            self._manage_exits(skip=waiting)
 
     def adopt_uncertain_buys(self) -> None:
         """A buy whose answer was lost may still have landed: tokens found in the wallet become a position with exits."""
@@ -343,8 +345,55 @@ class _MemeCycle:
             f"assumiu a posição (custo estimado ${usd:.2f}) e aplica o stop e as demais saídas. {fomo_link(mint)}"
         )
 
-    def _manage_exits(self) -> None:
+    def settle_uncertain_sells(self) -> set[int]:
+        """Tokens that left the wallet after a lost sell answer were sold: credit them at the attempt's price.
+        Tokens still there after a few minutes were not, and the exit rules sell again. Returns positions to leave alone."""
+        waiting: set[int] = set()
+        open_by_id = {p.id: p for p in self.store.open_positions()}
+        for key, raw in self.store.meta_with_prefix(UNCERTAIN_SELL).items():
+            pos_id = key[len(UNCERTAIN_SELL):]
+            pos = open_by_id.get(int(pos_id)) if pos_id.isdigit() else None
+            try:
+                pending = json.loads(raw)
+                at, price, amount = datetime.fromisoformat(pending["at"]), float(pending["price"]), int(pending["amount"])
+            except (ValueError, KeyError, TypeError):
+                pos = None
+            if pos is None:
+                self.store.delete_meta(key)
+                continue
+            try:
+                available = self.d.executor.sellable(pos.mint, pos.amount_raw)
+            except FETCH_ERRORS as exc:
+                self.error(f"saldo indisponível para a venda incerta de {pos.symbol}: {type(exc).__name__}")
+                waiting.add(pos.id)
+                continue
+            sold = min(pos.amount_raw - available, amount)
+            if sold > 0:
+                self.store.delete_meta(key)
+                self.settle_sold(pos, pending.get("reason") or "uncertain_sell", sold, price)
+            elif self.now - at >= timedelta(minutes=PENDING_BUY_MINUTES):
+                self.store.delete_meta(key)  # it never landed: the exit rules try again right away
+            else:
+                waiting.add(pos.id)
+        return waiting
+
+    def settle_sold(self, pos: MemePosition, reason: str, sold: int, price: float) -> None:
+        fill = MemeFill("SELL", sold, sold / 10 ** pos.decimals * price, self.s.network_fee_usd)
+        self.store.reduce_position(pos, fill, self.now, reason, price_usd=price)
+        closed = sold >= pos.amount_raw
+        if closed:
+            self.store.block_entry(pos.mint, self.now + timedelta(hours=self.s.reentry_cooldown_hours), f"saiu ({reason})")
+        self.report.exits += 1
+        self.write_sell(pos, fill, reason, price, closed)
+        self.d.notifier.send(
+            f"[{self.mode.upper()}] A venda incerta de {pos.symbol} provavelmente entrou: os tokens saíram da carteira. "
+            f"Registrei ${fill.usd - fill.fee_usd:.2f}, estimado pelo preço da tentativa; confira o USDC na carteira."
+        )
+
+    def _manage_exits(self, skip: set[int] = frozenset()) -> None:
         for pos in self.store.open_positions():
+            if pos.id in skip:
+                continue  # a sell whose answer was lost may still land: no second order yet
             decision = exit_decision(pos, self.held_pairs.get(pos.mint), self.now, self.s)
             if (decision is None or decision[1] < 1) and self.x_link_gone(pos):
                 decision = ("x_link_dead", 1.0)  # the dev deleted the post or the account: a classic rug tell
@@ -386,8 +435,14 @@ class _MemeCycle:
         try:
             fill = self.d.executor.sell(pos.mint, amount)
         except ExecutionError as exc:
+            if isinstance(exc, ExecutionUncertain):
+                self.store.set_meta(UNCERTAIN_SELL + str(pos.id), json.dumps({
+                    "at": self.now.isoformat(), "reason": reason, "amount": amount,
+                    "price": self.prices.get(pos.mint) or pos.last_price_usd or pos.entry_price_usd,
+                }))
             self.error(f"venda de {pos.symbol} falhou ({reason}): {exc}")
-            extra = " Verifique a carteira." if isinstance(exc, ExecutionUncertain) else ""
+            extra = (f" A resposta se perdeu: ele confere a carteira nos próximos {PENDING_BUY_MINUTES} min antes de tentar "
+                     "de novo." if isinstance(exc, ExecutionUncertain) else "")
             self.notify_once(f"sell_failed:{pos.id}",
                              f"[{self.mode.upper()}] O agente não conseguiu vender {pos.symbol} ({EXIT_LABELS.get(reason, reason)}): "
                              f"{exc}. Ele tenta de novo a cada ciclo.{extra} {fomo_link(pos.mint)}")

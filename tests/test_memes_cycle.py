@@ -217,9 +217,16 @@ def test_cycle_is_recorded_with_equity(tmp_path, store):
 class LiveLikeExecutor(PaperMemeExecutor):
     mode = "live"
 
-    def __init__(self, jup, *, funds=None, wallet_amount=None, buy_raises=None, balance=0):
+    def __init__(self, jup, *, funds=None, wallet_amount=None, buy_raises=None, balance=0, sell_raises=None):
         super().__init__(jup, network_fee_usd=0.002)
         self.funds, self.wallet_amount, self.buy_raises, self.balance = funds, wallet_amount, buy_raises, balance
+        self.sell_raises, self.sells = sell_raises, 0
+
+    def sell(self, mint, amount_raw):
+        self.sells += 1
+        if self.sell_raises:
+            raise self.sell_raises
+        return super().sell(mint, amount_raw)
 
     def wallet_balance(self, mint):
         if isinstance(self.balance, Exception):
@@ -302,6 +309,56 @@ def test_uncertain_buy_waits_when_the_wallet_cannot_be_read(tmp_path, store):
     run_meme_exits(deps(tmp_path, store, dex=dex, jup=jup, notifier=notifier, now=NOW + timedelta(minutes=31),
                         executor=LiveLikeExecutor(jup, balance=5)))
     assert len(store.open_positions()) == 1  # never dropped just because the RPC was down
+
+
+def uncertain_stop_loss(tmp_path, store, notifier):
+    open_held(store)
+    jup = FakeJupiter(prices={MINT: 0.0010})
+    dex = FakeDex({MINT: make_pair(price_usd=0.0010, liquidity_usd=100_000.0)}, discovered=[])
+    run_meme_cycle(deps(tmp_path, store, dex=dex, jup=jup, notifier=notifier,
+                        executor=LiveLikeExecutor(jup, sell_raises=ExecutionUncertain("lost response"))))
+    assert len(store.open_positions()) == 1  # nothing is booked while the answer is unknown
+    return jup, dex
+
+
+def test_uncertain_sell_whose_tokens_left_the_wallet_is_credited_at_the_last_price(tmp_path, store):
+    notifier = CapturingNotifier()
+    jup, dex = uncertain_stop_loss(tmp_path, store, notifier)
+    cash = store.cash()
+    ex = LiveLikeExecutor(jup, wallet_amount=0)
+    run_meme_exits(deps(tmp_path, store, dex=dex, jup=jup, notifier=notifier, executor=ex,
+                        now=NOW + timedelta(minutes=1)))
+    [closed] = store.closed_positions()
+    assert closed.close_reason == "stop_loss" and ex.sells == 0
+    assert closed.proceeds_usd == pytest.approx(2000 * 0.0010 - 0.002)  # 2000 tokens at the price of the attempt
+    assert store.cash() == pytest.approx(cash + closed.proceeds_usd)
+    assert any("provavelmente" in m for m in notifier.sent)
+
+
+def test_uncertain_sell_that_did_not_land_waits_then_sells_again(tmp_path, store):
+    notifier = CapturingNotifier()
+    jup, dex = uncertain_stop_loss(tmp_path, store, notifier)
+    ex = LiveLikeExecutor(jup)  # the tokens are all still in the wallet
+    run_meme_exits(deps(tmp_path, store, dex=dex, jup=jup, notifier=notifier, executor=ex,
+                        now=NOW + timedelta(minutes=3)))
+    assert ex.sells == 0 and len(store.open_positions()) == 1  # no second order while the first may still land
+    run_meme_exits(deps(tmp_path, store, dex=dex, jup=jup, notifier=notifier, executor=ex,
+                        now=NOW + timedelta(minutes=11)))
+    assert ex.sells == 1 and store.closed_positions()[0].close_reason == "stop_loss"
+
+
+def test_uncertain_partial_sell_credits_only_what_left_the_wallet(tmp_path, store):
+    open_held(store)
+    notifier = CapturingNotifier()
+    jup = FakeJupiter(prices={MINT: 0.0032})
+    dex = FakeDex({MINT: make_pair(price_usd=0.0032, liquidity_usd=100_000.0)}, discovered=[])
+    run_meme_cycle(deps(tmp_path, store, dex=dex, jup=jup, notifier=notifier,
+                        executor=LiveLikeExecutor(jup, sell_raises=ExecutionUncertain("lost"))))  # take profit: half
+    run_meme_exits(deps(tmp_path, store, dex=dex, jup=jup, notifier=notifier, now=NOW + timedelta(minutes=1),
+                        executor=LiveLikeExecutor(jup, wallet_amount=1_000_000_000)))
+    [pos] = store.open_positions()
+    assert pos.amount_raw == 1_000_000_000 and pos.take_profit_done
+    assert pos.proceeds_usd == pytest.approx(1000 * 0.0032 - 0.002)
 
 
 def test_failed_buy_is_recorded(tmp_path, store):
