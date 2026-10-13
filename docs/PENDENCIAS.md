@@ -9,12 +9,12 @@ Tudo que eu (Claude) não posso fazer por você: credenciais, dinheiro e decisõ
 | Item | Estado |
 |---|---|
 | Código | Pronto, 348 testes passando, na branch `feat/polymarket-desk` (PR #1 no GitHub) |
-| Agendador do Windows | **Ligado.** `PolymarketDesk` roda um ciclo a cada 10 min (paper); `PolymarketDeskMonthly` roda todo dia e relata 1x por mês |
+| Agendador do Windows | **Ligado.** `PolymarketDesk` roda um ciclo a cada 10 min (paper); `PolymarketDeskMemes` roda as memecoins a cada 3 min (paper); `PolymarketDeskMonthly` roda todo dia e relata 1x por mês |
 | Modo paper | Rodando sozinho: cada ciclo varre ~1000 mercados, ~470 passam no filtro, o Claude analisa até 3. Ainda sem entradas (nenhuma distorção ≥ 8pp) e sem erros |
 | Economia | O robô paga para existir: aluguel diário (assinatura rateada) + US$0,01 por análise, saindo do caixa dele. Se não lucrar mais que isso, é **desligado** na linha de 40% |
 | Painel | `scripts\dashboard.cmd` (duplo clique) ou `python -m desk dashboard` → http://127.0.0.1:8765 |
 | Modo real | **Bloqueado deste PC**: `python -m desk live-check` responde "Geobloqueio: BLOQUEADO (ConnectError)" porque esta rede não alcança `polymarket.com` |
-| Memecoins (Solana) | **Agente pronto em paper**: compra e vende sozinho com cotações reais da Jupiter, banca própria de US$100 (`state\memes.db`). Tarefa `PolymarketDeskMemes` a cada 3 min. Modo real pronto no código, travado até você criar a carteira (C4) |
+| Memecoins (Solana) | **Agente pronto em paper**: compra e vende sozinho com cotações reais da Jupiter, banca própria de US$100 (`state\memes.db`). Tarefa `PolymarketDeskMemes` a cada 3 min. No primeiro ciclo agendado (13/10, 11:33) o Claude vetou o único token que chegou até ele (sem fontes, possível cópia de outro ticker); ainda sem compras. Modo real pronto no código, travado até você criar a carteira (C4) |
 
 ---
 
