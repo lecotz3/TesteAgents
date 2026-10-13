@@ -43,6 +43,21 @@ powershell -ExecutionPolicy Bypass -File scripts\uninstall_task.ps1   # desliga
 
 A tarefa roda só com sua sessão do Windows aberta (o `claude` usa seu login). O PC não pode dormir — ajuste em Configurações > Energia.
 
+## Painel
+
+Dê duplo clique em `scripts\dashboard.cmd`, ou rode `.venv\Scripts\python -m desk dashboard`. O painel abre em http://127.0.0.1:8765 e se atualiza sozinho a cada 30s. Ele mostra:
+- equity e linha de desligamento;
+- ganho operando contra custo de existir;
+- fôlego em dias;
+- o que o Claude concluiu sobre cada mercado e por que o robô entrou ou pulou;
+- posições, trades, ciclos, diário e log.
+
+É somente leitura e só abre neste computador.
+
+## O robô paga para existir
+
+Todo dia ele paga um "aluguel" (a assinatura rateada), e cada análise do Claude custa `cost_per_analysis_usd`. Os dois saem do caixa dele. O gasto diário tem teto de `max_daily_burn_pct` da equity. Se as perdas somadas aos custos derrubarem a banca até a linha de drawdown, ele é **desligado** (ver "Parada por drawdown"). Os detalhes e os ajustes estão em `docs/PENDENCIAS.md`, item D7.
+
 ## As primeiras 48 horas (do guia original)
 
 Abra `state\trades.txt` a cada poucas horas e confira:
@@ -72,9 +87,9 @@ Os números do guia já vêm configurados: vantagem mínima de 8pp, ½ Kelly, m�
 | "analista falhou" no log | Limite do plano, timeout ou `claude` fora do PATH. O mercado entra em espera de 30 min; após 3 falhas o ciclo para de analisar. |
 | Quer colocar mais dinheiro | Não. A condição de sobrevivência só funciona se a banca for real. |
 
-## Parada por drawdown (o "pivô")
+## Desligamento por drawdown (o "pivô")
 
-Ao cair 40% do pico, o robô para de abrir posições (as saídas continuam), escreve um **post-mortem** no `trades.txt` com uma proposta de categoria mais previsível (o guia trocou cripto por clima) e te avisa. Leia, ajuste `allow_categories`/`skip_categories` se concordar, e rode:
+Ao cair 40% do pico, por perdas, por custos ou pelos dois, o robô é desligado: para de abrir posições, de analisar e de pagar aluguel (as saídas continuam), escreve um **post-mortem** no `trades.txt` com uma proposta de categoria mais previsível (o guia trocou cripto por clima) e te avisa. Leia, ajuste `allow_categories`/`skip_categories` se concordar, e rode:
 
 ```powershell
 .venv\Scripts\python -m desk resume

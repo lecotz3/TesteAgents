@@ -4,30 +4,29 @@ Tudo que eu (Claude) não posso fazer por você: credenciais, dinheiro e decisõ
 
 > Regra de ouro: **nunca cole chave privada, seed ou senha em chat nenhum** (nem comigo). Elas vão só no arquivo `.env`, na sua máquina, e o `.env` nunca vai para o git.
 
-## Situação em 12/10/2026
+## Situação em 13/10/2026
 
 | Item | Estado |
 |---|---|
-| Código | Pronto, 204 testes passando, na branch `feat/polymarket-desk` (PR #1 no GitHub) |
-| Modo paper | Funcionando. 2 ciclos reais: ~970–990 mercados varridos, ~435 candidatos, 4–6 analisados pelo Claude, 0 entradas (nenhuma distorção ≥ 8pp), 0 erros |
-| Agendador do Windows | **Falta você ligar** (passo 0 abaixo). Por segurança, o Claude Code não tem permissão para registrar tarefas persistentes no seu Windows |
+| Código | Pronto, 227 testes passando, na branch `feat/polymarket-desk` (PR #1 no GitHub) |
+| Agendador do Windows | **Ligado.** `PolymarketDesk` roda um ciclo a cada 10 min (paper); `PolymarketDeskMonthly` roda todo dia e relata 1x por mês |
+| Modo paper | Rodando sozinho: cada ciclo varre ~1000 mercados, ~470 passam no filtro, o Claude analisa até 3. Ainda sem entradas (nenhuma distorção ≥ 8pp) e sem erros |
+| Economia | O robô paga para existir: aluguel diário (assinatura rateada) + US$0,01 por análise, saindo do caixa dele. Se não lucrar mais que isso, é **desligado** na linha de 40% |
+| Painel | `scripts\dashboard.cmd` (duplo clique) ou `python -m desk dashboard` → http://127.0.0.1:8765 |
 | Modo real | **Bloqueado deste PC**: `python -m desk live-check` responde "Geobloqueio: BLOQUEADO (ConnectError)" porque esta rede não alcança `polymarket.com` |
 
 ---
 
-## 0. Ligar o robô (único passo obrigatório, 1 minuto)
+## 0. Ver o que está acontecendo
 
-No PowerShell, na pasta do projeto (`C:\Projetos\TesteAgents`):
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1
-```
-Ou, dentro do Claude Code, digite: `! powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1`
+Dê duplo clique em `scripts\dashboard.cmd`. Ele abre o painel no navegador, que se atualiza a cada 30s e mostra:
+- **Vida do robô:** equity, quanto ganhou operando, quanto custou existir, dias de fôlego até ser desligado e o gráfico contra a linha de desligamento.
+- **O que o robô decidiu:** cada mercado que o Claude analisou, com preço, valor justo, vantagem e o motivo de ter entrado ou pulado.
+- **Posições, trades e ciclos**, além do diário (`trades.txt`) e do log técnico.
 
-Isso cria duas tarefas:
-- `PolymarketDesk`: um ciclo a cada 10 min, em paper.
-- `PolymarketDeskMonthly`: roda todo dia e relata uma vez por mês.
+O painel só lê dados e fica acessível apenas neste computador. Para fechá-lo, feche a janela preta.
 
-Para conferir: `Get-ScheduledTask PolymarketDesk*`. Para desligar: `scripts\uninstall_task.ps1`.
+O agendador já está ligado. Para conferir: `Get-ScheduledTask PolymarketDesk*`. Para desligar: `scripts\uninstall_task.ps1`. Para religar: `scripts\install_task.ps1`.
 
 ---
 
@@ -80,6 +79,23 @@ O Codex vale só para o paper. No modo real o robô exige o Claude, porque o san
 Há um Pull Request aberto no GitHub (`lecotz3/TesteAgents`). Revise e dê **Merge** quando quiser. O robô roda da pasta local, então isso não muda nada no que já está rodando.
 
 ---
+
+### D7. Quanto o robô paga para existir (`[economy]` no `config.toml`)
+Cada ação custa dinheiro do próprio caixa do robô:
+- **Aluguel diário:** a assinatura rateada (US$20/30 ≈ US$0,67/dia).
+- **US$0,01 por análise:** cada "pensamento".
+- **Teto de gasto:** 1,5% da equity por dia. Com US$100, são US$1,50/dia. Com pouco dinheiro, ele precisa escolher onde pensar.
+
+Sem lucro, em ~33 dias ele cai 40% e é **desligado**. Desligado, ele para de operar, de analisar e de pagar aluguel, escreve o post-mortem e te avisa. Para religar: `python -m desk resume`.
+
+Ajustes possíveis:
+- **Modo difícil:** `cost_per_analysis_usd = 0.10` simula o preço de API.
+- **Mais fôlego:** banca maior. Como o aluguel é fixo, ele pesa menos.
+- **Valores fixos:** `daily_rent_usd` fixa o aluguel em vez de usar a assinatura.
+
+Minha recomendação: deixe como está no paper. É exatamente o teste que importa, porque mostra se ele se paga.
+
+No modo real, esses custos são contábeis: saem do caixa do robô no registro, não da carteira.
 
 ## Credenciais (só quando decidir usar)
 
