@@ -143,7 +143,7 @@ class _MemeCycle:
         self.mark_held()
         self.check_drawdown()
         self.manage_exits()
-        if not self.store.is_halted():
+        if not self.store.is_halted() and not self.bad_day():
             self.scan_and_enter()
         self.record_equity()
         self.track_vetter_health()
@@ -233,6 +233,27 @@ class _MemeCycle:
             f"(pico ${peak:.2f}, equity ${equity:.2f}; custos ${self.store.total_costs():.2f}). Ele parou de comprar "
             "e de gastar, mas segue vendendo pelas regras de saída. Para religar: python -m desk memes-resume"
         )
+
+    def bad_day(self) -> bool:
+        """Lost daily_loss_pause_pct of the bankroll in 24h: stop buying for now, keep managing exits."""
+        if self.s.daily_loss_pause_pct <= 0:
+            return False
+        cutoff = self.now - timedelta(hours=24)
+        before = self.store.equity_before(cutoff)
+        if before is None:
+            window = self.store.equity_history(cutoff)
+            before = window[0][1] if window else None
+        if not before or before <= 0:
+            return False
+        drop = (before - self.report.equity) / before
+        if drop * 100 < self.s.daily_loss_pause_pct:
+            return False
+        self.report.skips["daily_loss_pause"] += 1
+        self.notify_once(f"daily_loss_pause:{self.now.date()}",
+                         f"Memecoins: a banca caiu {drop:.0%} em 24h (de ${before:.2f} para ${self.report.equity:.2f}). "
+                         "O agente pausou as compras até a queda das últimas 24h ficar abaixo de "
+                         f"{self.s.daily_loss_pause_pct:.0f}%; as vendas pelas regras continuam.")
+        return True
 
     def trade_summary(self) -> str:
         lines = [

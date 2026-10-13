@@ -411,3 +411,26 @@ def test_live_x_post_keeps_the_position(tmp_path, store):
     dex = FakeDex({MINT: make_pair(price_usd=0.0016, liquidity_usd=100_000.0)}, discovered=[])
     report = run_meme_cycle(deps(tmp_path, store, dex=dex, x=FakeX(post=make_post())))
     assert report.exits == 0 and len(store.open_positions()) == 1
+
+
+def test_a_bad_day_pauses_new_buys_but_not_sells(tmp_path, store):
+    store.record_equity(NOW - timedelta(hours=30), 100.0, 100.0, 0.0)
+    store.record_equity(NOW - timedelta(hours=20), 100.0, 100.0, 0.0)
+    store.adjust_cash(-20.0)  # lost $20 since then
+    notifier = CapturingNotifier()
+    report = run_meme_cycle(deps(tmp_path, store, notifier=notifier))
+    run_meme_cycle(deps(tmp_path, store, notifier=notifier, now=NOW + timedelta(minutes=3)))
+    assert report.entries == 0 and report.skips["daily_loss_pause"] == 1
+    assert sum("pausou" in m for m in notifier.sent) == 1  # alerted once a day, not every cycle
+
+
+def test_a_small_dip_keeps_buying(tmp_path, store):
+    store.record_equity(NOW - timedelta(hours=25), 100.0, 100.0, 0.0)
+    store.adjust_cash(-10.0)
+    assert run_meme_cycle(deps(tmp_path, store)).entries == 1
+
+
+def test_daily_pause_can_be_switched_off(tmp_path, store):
+    store.record_equity(NOW - timedelta(hours=25), 100.0, 100.0, 0.0)
+    store.adjust_cash(-20.0)
+    assert run_meme_cycle(deps(tmp_path, store, daily_loss_pause_pct=0)).entries == 1

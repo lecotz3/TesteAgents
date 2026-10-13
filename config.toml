@@ -62,6 +62,7 @@ max_vets_per_day = 30          # sem checagem disponível ele não compra
 max_vets_per_cycle = 2         # cada checagem leva minutos; o resto fica para o próximo ciclo
 daily_rent_usd = 0.0           # o aluguel da assinatura já é pago pelo desk; suba se quiser cobrar dos dois
 drawdown_halt = 0.40           # caiu 40% do pico: DESLIGADO (para de comprar e de gastar; vendas continuam)
+daily_loss_pause_pct = 15      # perdeu 15% em 24h: pausa as compras (vendas continuam); 0 desliga
 
 # Filtros de mercado (DexScreener)
 min_liquidity_usd = 50000
