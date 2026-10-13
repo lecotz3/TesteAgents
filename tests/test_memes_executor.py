@@ -52,8 +52,23 @@ class FakeWallet:
         return "signed:" + tx_b64
 
 
-def live(http):
-    return LiveMemeExecutor(Jupiter(JupiterApi(http, min_interval=0)), FakeWallet(), SolanaRpc(http, RPC), network_fee_usd=0.002, min_sol=0.01)
+class Clock:
+    def __init__(self):
+        self.t = 0.0
+        self.slept: list[float] = []
+
+    def __call__(self) -> float:
+        return self.t
+
+    def sleep(self, seconds: float) -> None:
+        self.slept.append(seconds)
+        self.t += seconds
+
+
+def live(http, clock: Clock | None = None):
+    clock = clock or Clock()
+    return LiveMemeExecutor(Jupiter(JupiterApi(http, min_interval=0)), FakeWallet(), SolanaRpc(http, RPC),
+                            network_fee_usd=0.002, min_sol=0.01, clock=clock, sleep=clock.sleep)
 
 
 @respx.mock
@@ -90,19 +105,42 @@ def test_live_order_without_transaction_sends_nothing():
 
 
 @respx.mock
-def test_live_failed_swap_is_an_error_but_a_lost_response_is_uncertain():
+def test_live_failed_swap_is_an_error_not_an_uncertainty():
     respx.get(JUP + "/swap/v2/order").mock(return_value=httpx.Response(200, json=order_json(transaction="TX")))
-    respx.post(JUP + "/swap/v2/execute").mock(side_effect=[
-        httpx.Response(200, json={"status": "Failed", "error": "slippage", "code": -1}),
-        httpx.ReadTimeout("lost"),
+    execute = respx.post(JUP + "/swap/v2/execute").mock(
+        return_value=httpx.Response(200, json={"status": "Failed", "error": "slippage", "code": -1}))
+    with httpx.Client() as http, pytest.raises(ExecutionError) as failed:
+        live(http).buy(MINT, 3.0)
+    assert not isinstance(failed.value, ExecutionUncertain) and "slippage" in str(failed.value)
+    assert execute.call_count == 1  # a definite answer is never polled again
+
+
+@respx.mock
+def test_live_lost_response_is_polled_with_the_same_signed_transaction():
+    respx.get(JUP + "/swap/v2/order").mock(return_value=httpx.Response(200, json=order_json(transaction="TX")))
+    execute = respx.post(JUP + "/swap/v2/execute").mock(side_effect=[
+        httpx.ReadTimeout("lost"), httpx.Response(503), httpx.Response(200, json={"status": None}),
+        httpx.Response(200, json={"status": "Success", "signature": "SIG", "inputAmountResult": "3000000",
+                                  "outputAmountResult": "1990000000"}),
     ])
+    clock = Clock()
     with httpx.Client() as http:
-        ex = live(http)
-        with pytest.raises(ExecutionError) as failed:
-            ex.buy(MINT, 3.0)
-        assert not isinstance(failed.value, ExecutionUncertain)
-        with pytest.raises(ExecutionUncertain):
-            ex.buy(MINT, 3.0)
+        fill = live(http, clock).buy(MINT, 3.0)
+    assert (fill.amount_raw, fill.signature) == (1_990_000_000, "SIG")
+    assert execute.call_count == 4 and len(clock.slept) == 3
+    bodies = {c.request.read() for c in execute.calls}
+    assert bodies == {b'{"signedTransaction":"signed:TX","requestId":"r1"}'}  # Jupiter never executes it twice
+
+
+@respx.mock
+def test_live_swap_is_uncertain_when_jupiter_never_answers_within_the_window():
+    respx.get(JUP + "/swap/v2/order").mock(return_value=httpx.Response(200, json=order_json(transaction="TX")))
+    execute = respx.post(JUP + "/swap/v2/execute").mock(side_effect=httpx.ReadTimeout("lost"))
+    clock = Clock()
+    with httpx.Client() as http, pytest.raises(ExecutionUncertain):
+        live(http, clock).buy(MINT, 3.0)
+    assert 60 <= clock.t <= 110  # inside Jupiter's 2-minute resubmission window
+    assert execute.call_count >= 5
 
 
 def rpc_reply(request):

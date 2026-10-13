@@ -2,12 +2,18 @@
 from __future__ import annotations
 
 import base64
-from typing import Protocol
+import time
+from typing import Callable, Protocol
 
 from desk.config import ConfigError
 from desk.executor.base import ExecutionError, ExecutionUncertain
 from desk.memes.models import USDC_DECIMALS, USDC_MINT, MemeFill, Quote
 from desk.memes.sources import FETCH_ERRORS, Jupiter, SolanaRpc
+
+
+# Jupiter accepts the same signed transaction and requestId for 2 minutes to report its status, never executing it twice.
+EXECUTE_POLL_SECONDS = 90.0
+EXECUTE_POLL_EVERY = 5.0
 
 
 def usdc_raw(usd: float) -> int:
@@ -112,12 +118,15 @@ class LiveMemeExecutor:
 
     mode = "live"
 
-    def __init__(self, jupiter: Jupiter, wallet: Wallet, rpc: SolanaRpc, *, network_fee_usd: float, min_sol: float):
+    def __init__(self, jupiter: Jupiter, wallet: Wallet, rpc: SolanaRpc, *, network_fee_usd: float, min_sol: float,
+                 clock: Callable[[], float] = time.monotonic, sleep: Callable[[float], None] = time.sleep):
         self._jup = jupiter
         self._wallet = wallet
         self._rpc = rpc
         self._fee = network_fee_usd
         self._min_sol = min_sol
+        self._clock = clock
+        self._sleep = sleep
 
     @property
     def owner(self) -> str:
@@ -132,18 +141,28 @@ class LiveMemeExecutor:
             reason = order.get("errorMessage") or order.get("error") or "?"
             raise ExecutionError(f"Jupiter não montou a transação: {reason}")
         signed = self._wallet.sign(order["transaction"])
-        try:
-            result = self._jup.execute(signed, order["requestId"])
-        except FETCH_ERRORS as exc:  # it may have landed: the wallet must be checked
-            raise ExecutionUncertain(f"sem resposta do execute ({type(exc).__name__})") from exc
-        status = result.get("status")
-        if status == "Failed":
+        result = self._execute(signed, order["requestId"])
+        if result.get("status") == "Failed":
             raise ExecutionError(f"swap falhou: {result.get('error') or '?'} (código {result.get('code')})")
-        if status != "Success":
-            raise ExecutionUncertain(f"status desconhecido do execute: {status!r}")
         spent = int(result.get("inputAmountResult") or order["inAmount"])
         received = int(result.get("outputAmountResult") or order["outAmount"])
         return spent, received, result.get("signature")
+
+    def _execute(self, signed: str, request_id: str) -> dict:
+        """Submits, then resubmits the same signed transaction until Jupiter says Success or Failed."""
+        deadline = self._clock() + EXECUTE_POLL_SECONDS
+        while True:
+            try:
+                result = self._jup.execute(signed, request_id)
+            except FETCH_ERRORS as exc:  # it may have landed: ask again
+                last = f"sem resposta do execute ({type(exc).__name__})"
+            else:
+                if result.get("status") in ("Success", "Failed"):
+                    return result
+                last = f"status desconhecido do execute: {result.get('status')!r}"
+            if self._clock() >= deadline:
+                raise ExecutionUncertain(f"{last} por {EXECUTE_POLL_SECONDS:.0f}s; confira a carteira")
+            self._sleep(EXECUTE_POLL_EVERY)
 
     def buy(self, mint: str, usd: float) -> MemeFill:
         spent, received, sig = self._swap(USDC_MINT, mint, usdc_raw(usd))
