@@ -187,6 +187,9 @@ def cmd_monthly(app: App, force: bool = False, now: datetime | None = None) -> i
     else:
         message = (f"{tag}Relatório mensal {month}: equity ${equity:.2f}. {economy}Faltam ${target - equity:.2f} para cobrir "
                    f"assinatura (${m.subscription_cost_usd:.2f}) + reserva (${m.monthly_reserve_usd:.2f}). Nada a sacar.")
+    from desk.memes.readiness import monthly_line
+
+    message += monthly_line(app.settings.state_dir, app.settings.memes, now)
     app.journal.append(format_note("RELATÓRIO MENSAL", message, now))
     app.notifier.send(message)
     print(message)

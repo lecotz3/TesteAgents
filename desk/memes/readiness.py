@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import datetime
+from pathlib import Path
 
 from desk.config import MemesSettings
 from desk.memes.store import MemeStore
@@ -47,3 +48,20 @@ def readiness(store: MemeStore, s: MemesSettings, now: datetime) -> Readiness:
         net=round((last if last is not None else store.cash()) - s.bankroll_start_usd, 2) + 0.0,
         min_days=s.readiness_min_days, min_trades=s.readiness_min_trades,
     )
+
+
+def monthly_line(state_dir: Path, s: MemesSettings, now: datetime) -> str:
+    """One paragraph about the memecoin agent for the monthly report ('' when it never ran)."""
+    path = state_dir / "memes.db"
+    if not path.exists():
+        return ""
+    store = MemeStore.open_readonly(path)
+    try:
+        last = store.last_equity()
+        equity = last if last is not None else store.cash()
+        mode = "PAPER" if s.mode == "paper" else "REAL"
+        halted = " Está DESLIGADO (caiu até a linha de corte)." if store.is_halted() else ""
+        return (f" Memecoins [{mode}]: equity ${equity:.2f} ({equity - s.bankroll_start_usd:+.2f} desde o início, "
+                f"custos ${store.total_costs():.2f}).{halted} Prova em paper: {readiness(store, s, now).summary}.")
+    finally:
+        store.close()

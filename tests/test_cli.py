@@ -186,3 +186,20 @@ def test_dashboard_command_serves_on_localhost(app, monkeypatch, capsys):
     assert served == {"state_dir": app.settings.state_dir, "yes": True, "closed": True}
     assert opened == ["http://127.0.0.1:8765/"]
     assert "http://127.0.0.1:8765/" in capsys.readouterr().out
+
+
+def test_monthly_report_includes_the_memecoin_agent(app):
+    from desk.memes.store import MemeStore
+
+    memes = MemeStore(app.settings.state_dir / "memes.db", start_cash=100.0)
+    memes.record_equity(NOW, 104.5, 104.5, 0.0)
+    memes.charge(NOW, "vet", 0.25, "x")
+    memes.close()
+    cli.cmd_monthly(app, force=True, now=NOW)
+    message = app.notifier.sent[-1]
+    assert "Memecoins" in message and "$104.50" in message and "+4.50" in message and "0/30 trades" in message
+
+
+def test_monthly_report_without_memes_db_is_unchanged(app):
+    cli.cmd_monthly(app, force=True, now=NOW)
+    assert "Memecoins" not in app.notifier.sent[-1]
