@@ -7,7 +7,7 @@ from desk.analyst.base import AnalystError
 from desk.config import MemesSettings
 from desk.executor.base import ExecutionError, ExecutionUncertain
 from desk.journal import Journal
-from desk.memes.cycle import MemeDeps, run_meme_cycle
+from desk.memes.cycle import MemeDeps, run_meme_cycle, run_meme_exits
 from desk.memes.executor import PaperMemeExecutor
 from desk.memes.models import MemeFill
 from desk.memes.store import MemeStore
@@ -217,9 +217,14 @@ def test_cycle_is_recorded_with_equity(tmp_path, store):
 class LiveLikeExecutor(PaperMemeExecutor):
     mode = "live"
 
-    def __init__(self, jup, *, funds=None, wallet_amount=None, buy_raises=None):
+    def __init__(self, jup, *, funds=None, wallet_amount=None, buy_raises=None, balance=0):
         super().__init__(jup, network_fee_usd=0.002)
-        self.funds, self.wallet_amount, self.buy_raises = funds, wallet_amount, buy_raises
+        self.funds, self.wallet_amount, self.buy_raises, self.balance = funds, wallet_amount, buy_raises, balance
+
+    def wallet_balance(self, mint):
+        if isinstance(self.balance, Exception):
+            raise self.balance
+        return self.balance
 
     def funds_problem(self, usd):
         return self.funds
@@ -245,6 +250,58 @@ def test_uncertain_buy_blocks_the_token_and_alerts(tmp_path, store):
     run_meme_cycle(deps(tmp_path, store, jup=jup, executor=ex, notifier=notifier))
     assert store.open_positions() == [] and MINT in store.blocked_ids(NOW + timedelta(hours=20))
     assert any("carteira" in m for m in notifier.sent)
+
+
+def uncertain_buy(tmp_path, store, notifier):
+    jup = FakeJupiter()
+    run_meme_cycle(deps(tmp_path, store, jup=jup, notifier=notifier,
+                        executor=LiveLikeExecutor(jup, buy_raises=ExecutionUncertain("lost response"))))
+    assert store.open_positions() == []
+    return jup
+
+
+def test_uncertain_buy_that_landed_is_adopted_with_exit_rules(tmp_path, store):
+    notifier = CapturingNotifier()
+    jup = uncertain_buy(tmp_path, store, notifier)
+    cash = store.cash()
+    dex = FakeDex({MINT: make_pair()}, discovered=[])
+    held = 1_980_000_000
+    for minutes in (1, 2):  # the fast exits loop finds the tokens; the next run must not adopt them twice
+        run_meme_exits(deps(tmp_path, store, dex=dex, jup=jup, notifier=notifier, now=NOW + timedelta(minutes=minutes),
+                            executor=LiveLikeExecutor(jup, balance=held)))
+    [pos] = store.open_positions()
+    assert pos.amount_raw == held and pos.opened_at == NOW  # max hold counts from the real buy
+    assert pos.cost_usd == pytest.approx(3.0, abs=0.05) and store.cash() == pytest.approx(cash - pos.cost_usd)
+    assert pos.entry_price_usd == pytest.approx((pos.cost_usd - 0.002) / (held / 10 ** pos.decimals))
+    assert any("assumiu" in m for m in notifier.sent)
+    assert "compra incerta confirmada" in (tmp_path / "memes.txt").read_text(encoding="utf-8")
+
+
+def test_uncertain_buy_that_never_landed_is_dropped_after_ten_minutes(tmp_path, store):
+    notifier = CapturingNotifier()
+    jup = uncertain_buy(tmp_path, store, notifier)
+    cash, sent = store.cash(), len(notifier.sent)
+    dex = FakeDex({MINT: make_pair()}, discovered=[])
+    run_meme_exits(deps(tmp_path, store, dex=dex, jup=jup, notifier=notifier, now=NOW + timedelta(minutes=3),
+                        executor=LiveLikeExecutor(jup, balance=0)))
+    assert len(notifier.sent) == sent  # a lagging RPC gets a few minutes
+    for minutes in (11, 12):
+        run_meme_exits(deps(tmp_path, store, dex=dex, jup=jup, notifier=notifier, now=NOW + timedelta(minutes=minutes),
+                            executor=LiveLikeExecutor(jup, balance=0)))
+    assert store.open_positions() == [] and store.cash() == cash
+    assert len(notifier.sent) == sent + 1 and "não entrou" in notifier.sent[-1]
+
+
+def test_uncertain_buy_waits_when_the_wallet_cannot_be_read(tmp_path, store):
+    notifier = CapturingNotifier()
+    jup = uncertain_buy(tmp_path, store, notifier)
+    dex = FakeDex({MINT: make_pair()}, discovered=[])
+    report = run_meme_exits(deps(tmp_path, store, dex=dex, jup=jup, notifier=notifier, now=NOW + timedelta(minutes=30),
+                                 executor=LiveLikeExecutor(jup, balance=httpx.ConnectError("rpc down"))))
+    assert report.errors and store.open_positions() == []
+    run_meme_exits(deps(tmp_path, store, dex=dex, jup=jup, notifier=notifier, now=NOW + timedelta(minutes=31),
+                        executor=LiveLikeExecutor(jup, balance=5)))
+    assert len(store.open_positions()) == 1  # never dropped just because the RPC was down
 
 
 def test_failed_buy_is_recorded(tmp_path, store):

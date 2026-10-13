@@ -317,3 +317,12 @@ def test_one_jupiter_gateway_with_the_optional_key_serves_quotes_swaps_and_lists
         assert gate.min_interval < 2.0  # the free key's tier: 1 request per second
     finally:
         a.close()
+
+
+def test_status_lists_uncertain_buys_still_being_checked(app, capsys):
+    import json
+
+    app.store.set_meta("pending_buy:" + "M" * 44, json.dumps({"symbol": "LOST", "usd": 3.0, "at": NOW.isoformat()}))
+    assert memes_app.cmd_memes_status(app) == 0
+    out = capsys.readouterr().out
+    assert "Compras incertas" in out and "LOST" in out and "$3.00" in out

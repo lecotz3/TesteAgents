@@ -219,7 +219,7 @@ Na VPS não há navegador para logar no Claude. No **seu PC**, rode `claude setu
 7. **Obrigatório:** renomeie `state\memes.db` para `state\memes-paper.db`. O agente se recusa a usar o registro do paper no modo real.
 8. Acompanhe as primeiras compras de perto. O código assina só a parte da carteira em cada transação da Jupiter e foi testado com transações simuladas, **nunca contra a rede de verdade**.
 
-Se uma compra ficar "incerta" (a resposta se perdeu), ele avisa no Telegram e não compra aquele token por 24h: confira a carteira. O agente **não tem função de saque**; tirar dinheiro da carteira é sempre com você.
+Se a resposta de uma troca se perder, o agente pergunta de novo à Jupiter por até 90 segundos (ela nunca executa a mesma troca duas vezes). Se mesmo assim a compra ficar "incerta", ele avisa no Telegram e confere a carteira por 10 minutos: se os tokens chegaram, assume a posição com stop e as demais saídas; se não, avisa que o USDC não foi gasto. O `memes-status` mostra as compras incertas pendentes. O agente **não tem função de saque**; tirar dinheiro da carteira é sempre com você.
 
 ## Comandos do dia a dia
 

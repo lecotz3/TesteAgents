@@ -101,6 +101,11 @@ class Ledger:
         with self._db:
             self._db.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (key, value))
 
+    def meta_with_prefix(self, prefix: str) -> dict[str, str]:
+        rows = self._db.execute("SELECT key, value FROM meta WHERE substr(key, 1, ?) = ? ORDER BY key",
+                                (len(prefix), prefix)).fetchall()
+        return {r["key"]: r["value"] for r in rows}
+
     def delete_meta(self, key: str) -> None:
         with self._db:
             self._db.execute("DELETE FROM meta WHERE key = ?", (key,))

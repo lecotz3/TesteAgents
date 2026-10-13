@@ -135,3 +135,11 @@ def test_read_only_view_of_an_unmigrated_database_still_works(tmp_path):
     ro = MemeStore.open_readonly(path)
     assert ro.open_positions()[0].x_url is None
     ro.close()
+
+
+def test_meta_with_prefix_matches_the_exact_prefix(store):
+    store.set_meta("pending_buy:A", "1")
+    store.set_meta("pending_buy:B", "2")
+    store.set_meta("pending_buyX", "3")  # "_" is not a wildcard here
+    store.set_meta("other", "4")
+    assert store.meta_with_prefix("pending_buy:") == {"pending_buy:A": "1", "pending_buy:B": "2"}

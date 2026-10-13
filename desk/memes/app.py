@@ -1,6 +1,7 @@
 """Commands of the memecoin agent: python -m desk {memes, memes-status, memes-resume, memes-live-check}."""
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -14,7 +15,7 @@ from desk.executor import LIVE_CONFIRMATION
 from desk.executor.base import ExecutionError
 from desk.journal import Journal, format_note
 from desk.lock import cycle_lock
-from desk.memes.cycle import MemeDeps, run_meme_cycle, run_meme_exits
+from desk.memes.cycle import PENDING_BUY, MemeDeps, run_meme_cycle, run_meme_exits
 from desk.memes.executor import LiveMemeExecutor, MemeExecutor, PaperMemeExecutor, load_wallet, raw_usdc, usdc_raw
 from desk.memes.models import SOL_MINT, USDC_MINT
 from desk.memes.readiness import readiness
@@ -188,6 +189,15 @@ def cmd_memes_status(app: MemesApp) -> int:
         print(f"  - {p.symbol} ({p.name}) | custo ${p.cost_usd:.2f} | vale ${p.value_at(price):.2f} "
               f"({price / p.entry_price_usd - 1:+.0%}) | pico {p.peak_price_usd / p.entry_price_usd - 1:+.0%} | "
               f"aberta {p.opened_at:%m-%d %H:%M} | https://fomo.family/tokens/solana/{p.mint}")
+    pending = store.meta_with_prefix(PENDING_BUY)
+    if pending:
+        print("Compras incertas (o agente confere a carteira; se os tokens chegaram, assume a posição):")
+        for raw in pending.values():
+            try:
+                p = json.loads(raw)
+                print(f"  - {p['symbol']} | pedido ${float(p['usd']):.2f} | desde {datetime.fromisoformat(p['at']):%m-%d %H:%M}")
+            except (ValueError, KeyError, TypeError):
+                print("  - (registro ilegível)")
     print("Últimos trades:")
     for t in store.trades(limit=10):
         print(f"  - {t['ts']:%Y-%m-%d %H:%M} {t['side']} {t['symbol']} ${t['usd']:.2f} "

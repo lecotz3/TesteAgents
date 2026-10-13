@@ -35,6 +35,8 @@ class MemeExecutor(Protocol):
 
     def sellable(self, mint: str, amount_raw: int) -> int: ...
 
+    def wallet_balance(self, mint: str) -> int: ...
+
 
 class PaperMemeExecutor:
     """Fills at the exact amounts Jupiter would execute right now, plus an estimate of the network fee."""
@@ -67,6 +69,9 @@ class PaperMemeExecutor:
 
     def sellable(self, mint: str, amount_raw: int) -> int:
         return amount_raw
+
+    def wallet_balance(self, mint: str) -> int:
+        return 0  # paper has no wallet, and its fills are never uncertain
 
 
 class Wallet(Protocol):
@@ -180,4 +185,7 @@ class LiveMemeExecutor:
         return None
 
     def sellable(self, mint: str, amount_raw: int) -> int:
-        return min(amount_raw, self._rpc.token_balance(self.owner, mint))
+        return min(amount_raw, self.wallet_balance(mint))
+
+    def wallet_balance(self, mint: str) -> int:
+        return self._rpc.token_balance(self.owner, mint)

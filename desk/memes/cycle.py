@@ -1,6 +1,7 @@
 """One pass of the memecoin loop: mark, drawdown, exits, then discover → filter → safety → quote → vet → buy."""
 from __future__ import annotations
 
+import json
 import logging
 import math
 from collections import Counter
@@ -25,6 +26,8 @@ from desk.notify import Notifier
 log = logging.getLogger("desk")
 
 UNCERTAIN_BLOCK_HOURS = 24  # until the user checks the wallet
+PENDING_BUY = "pending_buy:"  # meta key prefix of buys whose answer was lost, by mint
+PENDING_BUY_MINUTES = 10  # a lost buy that has not shown up in the wallet by then never landed
 DEAD_VETTER_ALERT_CYCLES = 3
 EXIT_LABELS = {
     "stop_loss": "stop-loss", "take_profit": "realização de lucro", "trailing_stop": "stop móvel",
@@ -288,7 +291,57 @@ class _MemeCycle:
             if not free:
                 log.info("memes: outra execução está vendendo agora; saídas ficam para ela")
                 return
+            self.adopt_uncertain_buys()
             self._manage_exits()
+
+    def adopt_uncertain_buys(self) -> None:
+        """A buy whose answer was lost may still have landed: tokens found in the wallet become a position with exits."""
+        for key, raw in self.store.meta_with_prefix(PENDING_BUY).items():
+            mint = key[len(PENDING_BUY):]
+            try:
+                pending = json.loads(raw)
+                at = datetime.fromisoformat(pending["at"])
+            except (ValueError, KeyError, TypeError):
+                self.store.delete_meta(key)
+                continue
+            try:
+                held = self.d.executor.wallet_balance(mint)
+            except FETCH_ERRORS as exc:
+                self.error(f"saldo indisponível para a compra incerta de {pending['symbol']}: {type(exc).__name__}")
+                continue
+            if held > 0:
+                self.adopt(mint, pending, at, held)
+                self.store.delete_meta(key)
+            elif self.now - at >= timedelta(minutes=PENDING_BUY_MINUTES):
+                self.store.delete_meta(key)
+                self.d.notifier.send(
+                    f"[{self.mode.upper()}] A compra incerta de {pending['symbol']} não entrou: nenhum token chegou à "
+                    f"carteira em {PENDING_BUY_MINUTES} min, então o USDC não foi gasto. {fomo_link(mint)}"
+                )
+
+    def adopt(self, mint: str, pending: dict, at: datetime, held: int) -> None:
+        usd, fee = float(pending["usd"]), self.s.network_fee_usd
+        tokens = held / 10 ** int(pending["decimals"])
+        entry = usd / tokens
+        pos = MemePosition(
+            mint=mint, symbol=pending["symbol"], name=pending["name"], decimals=int(pending["decimals"]), amount_raw=held,
+            cost_usd=usd + fee, entry_price_usd=entry, peak_price_usd=entry,
+            entry_liquidity_usd=float(pending["liquidity_usd"]), opened_at=at, x_url=pending.get("x_url"),
+        )
+        self.store.open_position(pos, MemeFill("BUY", held, usd, fee), self.now, "compra incerta confirmada na carteira")
+        self.d.journal.append(format_note(
+            f"COMPRA MEMECOIN [{self.mode.upper()}] (compra incerta confirmada na carteira)",
+            f"Token: {pos.name} ({pos.symbol}) {mint}\n"
+            f"A resposta da Jupiter se perdeu em {at:%Y-%m-%d %H:%M} UTC, mas {tokens:,.2f} tokens apareceram na carteira.\n"
+            f"Custo estimado: ${usd:.2f} + rede ${fee:.3f} (o pedido enviado) | preço estimado ${entry:.8g}\n"
+            f"A partir de agora valem as regras de saída: stop -{self.s.stop_loss_pct:.0f}%, máximo "
+            f"{self.s.max_hold_hours:.0f}h desde a compra.",
+            self.now,
+        ))
+        self.d.notifier.send(
+            f"[{self.mode.upper()}] A compra incerta de {pos.symbol} entrou: {tokens:,.2f} tokens na carteira. O agente "
+            f"assumiu a posição (custo estimado ${usd:.2f}) e aplica o stop e as demais saídas. {fomo_link(mint)}"
+        )
 
     def _manage_exits(self) -> None:
         for pos in self.store.open_positions():
@@ -580,7 +633,14 @@ class _MemeCycle:
             self.error(f"compra de {pair.symbol} incerta: {exc}")
             self.store.block_entry(pair.mint, self.now + timedelta(hours=UNCERTAIN_BLOCK_HOURS), "compra incerta")
             self.decide(pair, "buy_uncertain", str(exc))
-            self.d.notifier.send(f"Compra de {pair.symbol} ficou incerta ({exc}). Confira a carteira. {fomo_link(pair.mint)}")
+            self.store.set_meta(PENDING_BUY + pair.mint, json.dumps({
+                "symbol": pair.symbol, "name": pair.name, "decimals": safety.decimals, "usd": size,
+                "at": self.now.isoformat(), "liquidity_usd": pair.liquidity_usd, "x_url": pair.x_url,
+            }))
+            self.d.notifier.send(
+                f"Compra de {pair.symbol} ficou incerta ({exc}). O agente confere a carteira nos próximos "
+                f"{PENDING_BUY_MINUTES} min: se os tokens chegaram, ele assume a posição com stop. {fomo_link(pair.mint)}"
+            )
             return True
         except ExecutionError as exc:
             self.error(f"compra de {pair.symbol} falhou: {exc}")
