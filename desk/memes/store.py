@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS positions (
     decimals INTEGER NOT NULL, amount_raw TEXT NOT NULL, cost_usd REAL NOT NULL, entry_price_usd REAL NOT NULL,
     peak_price_usd REAL NOT NULL, entry_liquidity_usd REAL NOT NULL, opened_at TEXT NOT NULL,
     take_profit_done INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'open', closed_at TEXT,
-    proceeds_usd REAL NOT NULL DEFAULT 0, close_reason TEXT, last_price_usd REAL
+    proceeds_usd REAL NOT NULL DEFAULT 0, close_reason TEXT, last_price_usd REAL, x_url TEXT
 );
 CREATE TABLE IF NOT EXISTS trades (
     id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, position_id INTEGER NOT NULL, mint TEXT NOT NULL,
@@ -32,6 +32,12 @@ CREATE TABLE IF NOT EXISTS decisions (
 class MemeStore(Ledger):
     SCHEMA = MEMES_SCHEMA
     DECISION_FIELDS = ("mint", "symbol", "price_usd", "liquidity_usd", "market_cap_usd", "decision", "detail")
+
+    def _migrate(self) -> None:
+        columns = {r["name"] for r in self._db.execute("PRAGMA table_info(positions)").fetchall()}
+        if "x_url" not in columns:  # databases created before the X exit
+            with self._db:
+                self._db.execute("ALTER TABLE positions ADD COLUMN x_url TEXT")
 
     def _set_cash(self, value: float) -> None:
         """Inside a caller's transaction: cash moves together with the trade that caused it."""
@@ -53,9 +59,9 @@ class MemeStore(Ledger):
         with self._db:
             cur = self._db.execute(
                 "INSERT INTO positions (mint, symbol, name, decimals, amount_raw, cost_usd, entry_price_usd, "
-                "peak_price_usd, entry_liquidity_usd, opened_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "peak_price_usd, entry_liquidity_usd, opened_at, x_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (pos.mint, pos.symbol, pos.name, pos.decimals, str(pos.amount_raw), pos.cost_usd,
-                 pos.entry_price_usd, pos.peak_price_usd, pos.entry_liquidity_usd, _iso(pos.opened_at)),
+                 pos.entry_price_usd, pos.peak_price_usd, pos.entry_liquidity_usd, _iso(pos.opened_at), pos.x_url),
             )
             pos.id = int(cur.lastrowid)
             self._add_trade(ts, pos, fill, -cost, pos.entry_price_usd, reason)
@@ -108,6 +114,7 @@ class MemeStore(Ledger):
                 opened_at=_dt(r["opened_at"]), take_profit_done=bool(r["take_profit_done"]), id=r["id"],
                 status=r["status"], closed_at=_dt(r["closed_at"]), proceeds_usd=r["proceeds_usd"],
                 close_reason=r["close_reason"], last_price_usd=r["last_price_usd"],
+                x_url=r["x_url"] if "x_url" in r.keys() else None,  # read-only views never migrate
             )
             for r in rows
         ]

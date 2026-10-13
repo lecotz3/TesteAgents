@@ -96,3 +96,42 @@ def test_mode_is_pinned(store):
     store.ensure_mode("paper")
     with pytest.raises(ModeMismatch):
         store.ensure_mode("live")
+
+
+def test_position_keeps_its_x_link(store):
+    store.open_position(make_meme_position(x_url="https://x.com/a/status/1"), buy_fill(), NOW, "x")
+    assert store.open_positions()[0].x_url == "https://x.com/a/status/1"
+
+
+def test_old_database_gets_the_x_link_column(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "old.db"
+    db = sqlite3.connect(path)
+    db.execute("CREATE TABLE positions (id INTEGER PRIMARY KEY AUTOINCREMENT, mint TEXT NOT NULL, symbol TEXT NOT NULL, "
+               "name TEXT NOT NULL, decimals INTEGER NOT NULL, amount_raw TEXT NOT NULL, cost_usd REAL NOT NULL, "
+               "entry_price_usd REAL NOT NULL, peak_price_usd REAL NOT NULL, entry_liquidity_usd REAL NOT NULL, "
+               "opened_at TEXT NOT NULL, take_profit_done INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'open', "
+               "closed_at TEXT, proceeds_usd REAL NOT NULL DEFAULT 0, close_reason TEXT, last_price_usd REAL)")
+    db.commit()
+    db.close()
+    s = MemeStore(path, start_cash=100.0)
+    s.open_position(make_meme_position(x_url="https://x.com/b"), buy_fill(), NOW, "x")
+    assert s.open_positions()[0].x_url == "https://x.com/b"
+    s.close()
+
+
+def test_read_only_view_of_an_unmigrated_database_still_works(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "old.db"
+    s = MemeStore(path, start_cash=100.0)
+    s.open_position(make_meme_position(), buy_fill(), NOW, "x")
+    s.close()
+    db = sqlite3.connect(path)
+    db.execute("ALTER TABLE positions DROP COLUMN x_url")  # as if written by the previous version
+    db.commit()
+    db.close()
+    ro = MemeStore.open_readonly(path)
+    assert ro.open_positions()[0].x_url is None
+    ro.close()

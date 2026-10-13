@@ -93,6 +93,7 @@ class MemePosition:
     proceeds_usd: float = 0.0
     close_reason: str | None = None
     last_price_usd: float | None = None  # last DexScreener price seen
+    x_url: str | None = None  # the X post or profile the token linked to when it was bought
 
     def tokens(self) -> float:
         return self.amount_raw / 10 ** self.decimals

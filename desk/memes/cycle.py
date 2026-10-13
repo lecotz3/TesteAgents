@@ -28,6 +28,7 @@ DEAD_VETTER_ALERT_CYCLES = 3
 EXIT_LABELS = {
     "stop_loss": "stop-loss", "take_profit": "realização de lucro", "trailing_stop": "stop móvel",
     "max_hold": "tempo máximo", "liquidity_drained": "liquidez sumindo",
+    "x_link_dead": "o post/perfil do X do token foi apagado",
 }
 
 
@@ -246,8 +247,20 @@ class _MemeCycle:
     def manage_exits(self) -> None:
         for pos in self.store.open_positions():
             decision = exit_decision(pos, self.held_pairs.get(pos.mint), self.now, self.s)
+            if (decision is None or decision[1] < 1) and self.x_link_gone(pos):
+                decision = ("x_link_dead", 1.0)  # the dev deleted the post or the account: a classic rug tell
             if decision is not None:
                 self.sell(pos, *decision)
+
+    def x_link_gone(self, pos: MemePosition) -> bool:
+        if not self.s.x_enabled or self.d.x is None or not pos.x_url:
+            return False
+        try:
+            x = XSignal.collect(parse_x_link(pos.x_url), self.d.x)
+        except XUnavailable as exc:
+            self.error(f"X indisponível para {pos.symbol}: {exc}")
+            return False  # an outage is never a reason to sell
+        return x.kind is not None and not x.found
 
     def sell(self, pos: MemePosition, reason: str, fraction: float) -> None:
         try:
@@ -535,7 +548,7 @@ class _MemeCycle:
         pos = MemePosition(
             mint=pair.mint, symbol=pair.symbol, name=pair.name, decimals=safety.decimals, amount_raw=fill.amount_raw,
             cost_usd=fill.usd + fill.fee_usd, entry_price_usd=entry, peak_price_usd=entry,
-            entry_liquidity_usd=pair.liquidity_usd, opened_at=self.now,
+            entry_liquidity_usd=pair.liquidity_usd, opened_at=self.now, x_url=pair.x_url,
         )
         self.store.open_position(pos, fill, self.now, f"ida e volta {loss:.1%}")
         self.prices[pair.mint] = pair.price_usd

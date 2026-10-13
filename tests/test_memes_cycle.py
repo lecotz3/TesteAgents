@@ -377,3 +377,37 @@ def test_bought_row_says_what_x_showed(tmp_path, store):
     run_meme_cycle(deps(tmp_path, store, dex=FakeDex({MINT: make_pair(x_url=STATUS)}), x=FakeX(post=make_post())))
     [d] = store.recent_decisions(1)
     assert d["decision"] == "bought" and "@elonmusk" in d["detail"]
+
+
+def held_with_x(store, url=STATUS):
+    pos = make_meme_position(x_url=url)
+    store.open_position(pos, MemeFill("BUY", pos.amount_raw, pos.cost_usd, 0.002), NOW - timedelta(hours=1), "x")
+
+
+def test_buy_remembers_the_x_link(tmp_path, store):
+    run_meme_cycle(deps(tmp_path, store, dex=FakeDex({MINT: make_pair(x_url=STATUS)}), x=FakeX(post=make_post())))
+    assert store.open_positions()[0].x_url == STATUS
+
+
+def test_deleted_x_post_after_buying_sells_everything(tmp_path, store):
+    held_with_x(store)
+    notifier = CapturingNotifier()
+    dex = FakeDex({MINT: make_pair(price_usd=0.0016, liquidity_usd=100_000.0)}, discovered=[])
+    report = run_meme_cycle(deps(tmp_path, store, dex=dex, x=FakeX(post=None), notifier=notifier,
+                                 jup=FakeJupiter(prices={MINT: 0.0016})))
+    assert report.exits == 1 and store.closed_positions()[0].close_reason == "x_link_dead"
+    assert any("apagado" in m for m in notifier.sent)
+
+
+def test_x_outage_never_sells_a_held_token(tmp_path, store):
+    held_with_x(store)
+    dex = FakeDex({MINT: make_pair(price_usd=0.0016, liquidity_usd=100_000.0)}, discovered=[])
+    report = run_meme_cycle(deps(tmp_path, store, dex=dex, x=FakeX(raises=XUnavailable("HTTP 503"))))
+    assert report.exits == 0 and len(store.open_positions()) == 1
+
+
+def test_live_x_post_keeps_the_position(tmp_path, store):
+    held_with_x(store)
+    dex = FakeDex({MINT: make_pair(price_usd=0.0016, liquidity_usd=100_000.0)}, discovered=[])
+    report = run_meme_cycle(deps(tmp_path, store, dex=dex, x=FakeX(post=make_post())))
+    assert report.exits == 0 and len(store.open_positions()) == 1
