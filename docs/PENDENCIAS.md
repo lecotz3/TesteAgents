@@ -118,15 +118,22 @@ Suas escolhas:
 ## Credenciais (só quando decidir usar)
 
 ### C1. Avisos no celular pelo Telegram (opcional, recomendado)
-1. No Telegram, abra `@BotFather` → `/newbot` → escolha nome e usuário → copie o **token** (algo como `123456:ABC...`).
-2. Mande qualquer mensagem ("oi") para o seu bot novo.
-3. No navegador, abra `https://api.telegram.org/bot<TOKEN>/getUpdates` (troque `<TOKEN>`) e copie o número em `"chat":{"id": ...}`.
-4. Copie `.env.example` para `.env` (se ainda não existir) e preencha:
+1. No Telegram, abra `@BotFather` → `/newbot` → escolha um nome e um usuário (terminando em `bot`) → copie o **token** (algo como `123456:ABC...`).
+2. Abra o arquivo `.env` na pasta do projeto (`notepad .env`), cole o token na linha `TELEGRAM_BOT_TOKEN=` e salve. O `.env` já existe e nunca vai para o git. **Não cole o token em chat.**
+3. No Telegram, abra o seu bot novo, toque em **Iniciar** e mande "oi".
+4. Rode:
+   ```powershell
+   .venv\Scripts\python -m desk telegram-setup
    ```
-   TELEGRAM_BOT_TOKEN=123456:ABC...
-   TELEGRAM_CHAT_ID=987654321
-   ```
-5. Pronto. Você recebe aviso de entradas, saídas, parada por drawdown, relatório mensal e falhas repetidas.
+   O comando confere o token, acha a sua conversa com o bot, grava `TELEGRAM_CHAT_ID` no `.env` e manda uma mensagem de teste.
+5. Pronto: os próximos ciclos já mandam os avisos. Você recebe:
+   - compras e vendas (Polymarket e memecoins);
+   - as memecoins aprovadas;
+   - desligamento por queda;
+   - falhas repetidas;
+   - o relatório mensal.
+
+   Os avisos de compra e venda em paper das memecoins podem ser desligados com `notify_paper_trades = false`.
 
 ### C2. Carteira para o modo real (só depois da D2 e da D3)
 O modo real usa o SDK oficial `polymarket-client` (Protocol V2, saldo em **pUSD**).

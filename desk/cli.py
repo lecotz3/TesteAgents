@@ -314,7 +314,14 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("memes-status", help="banca, posições e trades do agente de memecoins")
     sub.add_parser("memes-resume", help="religa o agente de memecoins após parada por queda")
     sub.add_parser("memes-live-check", help="verifica se o modo real das memecoins está pronto (não negocia)")
+    sub.add_parser("telegram-setup", help="confere o token do bot, acha sua conversa e manda um teste")
     args = parser.parse_args(argv)
+
+    if args.command == "telegram-setup":
+        from desk.telegram_setup import run_setup
+
+        with httpx.Client(timeout=20.0, headers={"User-Agent": USER_AGENT}) as http:
+            return run_setup(args.env_file, http)
 
     if args.command.startswith("memes"):
         return run_memes_command(args.command, args.config, args.env_file)
