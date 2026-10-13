@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import math
 from collections import Counter
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Callable, Protocol
@@ -70,6 +71,8 @@ class MemeDeps:
     now: Callable[[], datetime]
     x: XSource | None = None
     tokens: TokenSource | None = None
+    # Only one run sells at a time: the full cycle and the 1-minute exits-only run share this guard.
+    exit_guard: Callable[[], AbstractContextManager[bool]] = lambda: nullcontext(True)
 
 
 @dataclass
@@ -124,6 +127,11 @@ def run_meme_cycle(deps: MemeDeps) -> MemeCycleReport:
     return _MemeCycle(deps).run()
 
 
+def run_meme_exits(deps: MemeDeps) -> MemeCycleReport:
+    """The fast loop: prices, drawdown and exit rules only. Never discovers, never buys, never calls Claude."""
+    return _MemeCycle(deps).run_exits()
+
+
 class _MemeCycle:
     def __init__(self, deps: MemeDeps):
         self.d = deps
@@ -151,6 +159,16 @@ class _MemeCycle:
         for error in self.report.errors:
             log.warning("memes: %s", error)
         self.store.record_cycle(self.now, self.report.as_dict(), self.decisions)
+        return self.report
+
+    def run_exits(self) -> MemeCycleReport:
+        self.mark_held()
+        self.check_drawdown()
+        self.manage_exits()
+        self.record_equity()
+        self.report.halted = self.store.is_halted()
+        for error in self.report.errors:
+            log.warning("memes (saídas): %s", error)
         return self.report
 
     # --- helpers --------------------------------------------------------------
@@ -266,6 +284,13 @@ class _MemeCycle:
 
     # --- 3. exits -------------------------------------------------------------
     def manage_exits(self) -> None:
+        with self.d.exit_guard() as free:
+            if not free:
+                log.info("memes: outra execução está vendendo agora; saídas ficam para ela")
+                return
+            self._manage_exits()
+
+    def _manage_exits(self) -> None:
         for pos in self.store.open_positions():
             decision = exit_decision(pos, self.held_pairs.get(pos.mint), self.now, self.s)
             if (decision is None or decision[1] < 1) and self.x_link_gone(pos):

@@ -320,6 +320,7 @@ def main(argv: list[str] | None = None) -> int:
     dashboard.add_argument("--port", type=int, default=8765)
     dashboard.add_argument("--no-browser", action="store_true", help="não abre o navegador sozinho")
     sub.add_parser("memes", help="roda um ciclo do agente de memecoins (Solana)")
+    sub.add_parser("memes-exits", help="memecoins: só preços e regras de saída (roda a cada minuto)")
     sub.add_parser("memes-status", help="banca, posições e trades do agente de memecoins")
     sub.add_parser("memes-resume", help="religa o agente de memecoins após parada por queda")
     sub.add_parser("memes-live-check", help="verifica se o modo real das memecoins está pronto (não negocia)")

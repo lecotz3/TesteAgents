@@ -221,3 +221,40 @@ def test_cycle_gets_jupiter_token_lists(tmp_path, monkeypatch):
     finally:
         a.close()
     assert isinstance(seen[0].tokens, JupiterTokens)
+
+
+def test_exits_command_runs_the_fast_loop_with_the_shared_exit_lock(app, monkeypatch):
+    seen = []
+    monkeypatch.setattr(memes_app, "run_meme_exits", lambda deps: seen.append(deps) or MemeCycleReport())
+    assert memes_app.cmd_memes_exits(app) == 0
+    deps = seen[0]
+    assert deps.vetter is None  # the fast loop never calls Claude
+    with deps.exit_guard() as free:
+        assert free
+        with deps.exit_guard() as again:
+            assert not again  # a second seller waits
+
+
+def test_full_cycle_uses_the_same_exit_lock(app, monkeypatch):
+    seen = []
+    monkeypatch.setattr(memes_app, "run_meme_cycle", lambda deps: seen.append(deps) or MemeCycleReport())
+    memes_app.cmd_memes_cycle(app)
+    (app.settings.state_dir / "memes-exits.lock").write_text("1")
+    with seen[0].exit_guard() as free:
+        assert not free
+
+
+def test_exits_command_does_nothing_when_disabled(tmp_path, monkeypatch):
+    a = memes_app.build_memes_app(write_config(tmp_path, "enabled = false\n"), tmp_path / ".env")
+    monkeypatch.setattr(memes_app, "run_meme_exits", lambda deps: (_ for _ in ()).throw(AssertionError("off")))
+    try:
+        assert memes_app.cmd_memes_exits(a) == 0
+    finally:
+        a.close()
+
+
+def test_main_knows_the_exits_command(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(memes_app, "cmd_memes_exits", lambda a: seen.append(1) or 0)
+    assert cli.main(["--config", str(write_config(tmp_path)), "--env-file", str(tmp_path / ".env"), "memes-exits"]) == 0
+    assert seen == [1]

@@ -13,7 +13,7 @@ from desk.config import ConfigError, Secrets, Settings
 from desk.executor import LIVE_CONFIRMATION
 from desk.journal import Journal, format_note
 from desk.lock import cycle_lock
-from desk.memes.cycle import MemeDeps, run_meme_cycle
+from desk.memes.cycle import MemeDeps, run_meme_cycle, run_meme_exits
 from desk.memes.executor import LiveMemeExecutor, MemeExecutor, PaperMemeExecutor, load_wallet, raw_usdc
 from desk.memes.models import USDC_MINT
 from desk.memes.readiness import readiness
@@ -96,6 +96,42 @@ def _record_failure(app: MemesApp, message: str) -> None:
         app.notifier.send(f"Memecoins: {failures} ciclos seguidos com erro. Último: {message}. Veja state/desk.log.")
 
 
+def exit_lock(app: MemesApp):
+    """Shared by the full cycle and the 1-minute exits run: only one of them sells at a time."""
+    return cycle_lock(app.settings.state_dir / "memes-exits.lock", stale_after_seconds=600)
+
+
+def build_deps(app: MemesApp, *, with_vetter: bool) -> MemeDeps:
+    m = app.settings.memes
+    return MemeDeps(
+        settings=m, store=app.store, dex=DexScreener(app.http), rugcheck=RugCheck(app.http),
+        jupiter=Jupiter(app.http), vetter=make_vetter(app) if with_vetter else None,
+        executor=make_meme_executor(app), journal=app.journal, notifier=app.notifier, now=utcnow,
+        x=FxTwitter(app.http, m.x_api_url) if m.x_enabled else None, tokens=JupiterTokens(app.http),
+        exit_guard=lambda: exit_lock(app),
+    )
+
+
+def cmd_memes_exits(app: MemesApp) -> int:
+    """Every minute: prices, stops and take-profits only (no discovery, no Claude)."""
+    if not app.settings.memes.enabled:
+        return 0
+    try:
+        deps = build_deps(app, with_vetter=False)
+    except ConfigError as exc:
+        log.error("memes (saídas): configuração inválida: %s", exc)
+        return 2
+    try:
+        report = run_meme_exits(deps)
+    except Exception as exc:  # noqa: BLE001 - every crash must be counted and reported
+        log.exception("memes (saídas): falhou")
+        _record_failure(app, f"{type(exc).__name__}: {exc}")
+        return 1
+    if report.exits:
+        log.info("memes (saídas): %d venda(s); equity $%.2f", report.exits, report.equity)
+    return 0
+
+
 def cmd_memes_cycle(app: MemesApp) -> int:
     if not app.settings.memes.enabled:
         log.info("memes: agente desligado no config.toml ([memes] enabled = false)")
@@ -105,13 +141,7 @@ def cmd_memes_cycle(app: MemesApp) -> int:
             log.info("memes: outro ciclo ainda está rodando; nada a fazer")
             return 0
         try:
-            deps = MemeDeps(
-                settings=app.settings.memes, store=app.store, dex=DexScreener(app.http), rugcheck=RugCheck(app.http),
-                jupiter=Jupiter(app.http), vetter=make_vetter(app), executor=make_meme_executor(app),
-                journal=app.journal, notifier=app.notifier, now=utcnow,
-                x=FxTwitter(app.http, app.settings.memes.x_api_url) if app.settings.memes.x_enabled else None,
-                tokens=JupiterTokens(app.http),
-            )
+            deps = build_deps(app, with_vetter=True)
         except ConfigError as exc:
             log.error("memes: configuração inválida: %s", exc)
             _record_failure(app, str(exc))
@@ -216,6 +246,6 @@ def _verdict(ok: bool) -> int:
 
 
 def run_command(command: str, app: MemesApp) -> int:
-    handlers = {"memes": cmd_memes_cycle, "memes-status": cmd_memes_status, "memes-resume": cmd_memes_resume,
-                "memes-live-check": cmd_memes_live_check}
+    handlers = {"memes": cmd_memes_cycle, "memes-exits": cmd_memes_exits, "memes-status": cmd_memes_status,
+                "memes-resume": cmd_memes_resume, "memes-live-check": cmd_memes_live_check}
     return handlers[command](app)

@@ -434,3 +434,35 @@ def test_daily_pause_can_be_switched_off(tmp_path, store):
     store.record_equity(NOW - timedelta(hours=25), 100.0, 100.0, 0.0)
     store.adjust_cash(-20.0)
     assert run_meme_cycle(deps(tmp_path, store, daily_loss_pause_pct=0)).entries == 1
+
+
+def test_exits_only_run_sells_without_discovering_or_buying(tmp_path, store):
+    from desk.memes.cycle import run_meme_exits
+
+    open_held(store)
+
+    class NoDiscovery(FakeDex):
+        def discover(self):
+            raise AssertionError("an exits-only run never discovers")
+
+    dex = NoDiscovery({MINT: make_pair(price_usd=0.0010, liquidity_usd=100_000.0)})
+    report = run_meme_exits(deps(tmp_path, store, dex=dex, jup=FakeJupiter(prices={MINT: 0.0010})))
+    assert report.exits == 1 and store.closed_positions()[0].close_reason == "stop_loss"
+    assert store.last_equity() is not None and store.recent_cycles(1) == []  # equity yes, "last cycle" untouched
+
+
+def test_exits_wait_when_another_run_is_selling(tmp_path, store):
+    from contextlib import contextmanager
+
+    from desk.memes.cycle import run_meme_exits
+
+    @contextmanager
+    def busy():
+        yield False
+
+    open_held(store)
+    dex = FakeDex({MINT: make_pair(price_usd=0.0010, liquidity_usd=100_000.0)}, discovered=[])
+    d = deps(tmp_path, store, dex=dex, jup=FakeJupiter(prices={MINT: 0.0010}))
+    d.exit_guard = busy
+    assert run_meme_exits(d).exits == 0 and run_meme_cycle(d).exits == 0
+    assert len(store.open_positions()) == 1

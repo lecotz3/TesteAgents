@@ -4,4 +4,5 @@ DESK_HOME=/home/desk/polymarket-desk
 # flock: never two cycles at once; timeout: a hung cycle dies before the next one (the Windows task has the same 30 min cap)
 */10 * * * * cd $DESK_HOME && flock -n state/cron.flock timeout 25m .venv/bin/python -m desk cycle >> state/cron.log 2>&1
 */3 * * * * cd $DESK_HOME && flock -n state/memes.flock timeout 25m .venv/bin/python -m desk memes >> state/cron.log 2>&1
+* * * * * cd $DESK_HOME && flock -n state/memes-exits.flock timeout 5m .venv/bin/python -m desk memes-exits >> state/cron.log 2>&1
 0 9 * * * cd $DESK_HOME && .venv/bin/python -m desk monthly >> state/cron.log 2>&1
