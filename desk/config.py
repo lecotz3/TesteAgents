@@ -106,7 +106,8 @@ class MemesSettings(BaseModel):
     max_candidates_checked: int = Field(8, ge=1)  # RugCheck/Jupiter calls per cycle stay polite
     max_price_mismatch_pct: float = Field(25.0, gt=0)  # quote vs DexScreener price: catches stale data or decimals
     network_fee_usd: float = Field(0.002, ge=0)  # per transaction, paper estimate
-    min_sol_balance: float = Field(0.01, ge=0)  # live: SOL kept in the wallet for network fees
+    min_sol_balance: float = Field(0.05, ge=0)  # live: SOL for fees and ~0.002 rent per new token account
+    max_buy_drift_pct: float = Field(3.0, ge=0)  # the buy order may be at most this much worse than the approved quote
     rpc_url: str = "https://api.mainnet-beta.solana.com"
     rejection_block_hours: float = Field(6.0, ge=0)  # do not re-check a rejected token before this
     # exits

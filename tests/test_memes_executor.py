@@ -6,7 +6,7 @@ import respx
 
 from desk.config import ConfigError
 from desk.executor.base import ExecutionError, ExecutionUncertain
-from desk.memes.executor import LiveMemeExecutor, PaperMemeExecutor, load_wallet
+from desk.memes.executor import LiveMemeExecutor, PaperMemeExecutor, PriceMoved, load_wallet
 from desk.memes.sources import Jupiter, JupiterApi, SolanaRpc
 from tests.meme_factories import MINT, USDC
 
@@ -221,3 +221,32 @@ def test_bad_private_key_is_a_config_error():
     pytest.importorskip("solders")
     with pytest.raises(ConfigError):
         load_wallet("not-a-key")
+
+
+@respx.mock
+def test_live_buy_refuses_an_order_worse_than_the_approved_quote():
+    # Real case: a wallet without SOL for fees gets a "gasless" order from Jupiter with a 10% fee.
+    respx.get(JUP + "/swap/v2/order").mock(return_value=httpx.Response(200, json=order_json(
+        transaction="TX", outAmount="1800000000", gasless=True, feeBps=1000)))
+    execute = respx.post(JUP + "/swap/v2/execute")
+    with httpx.Client() as http, pytest.raises(PriceMoved) as err:
+        live(http).buy(MINT, 3.0, min_out=1_940_000_000)
+    assert not execute.called
+    assert "gasless" in str(err.value) and "10.0%" in str(err.value)
+
+
+@respx.mock
+def test_live_buy_at_or_above_the_floor_goes_through():
+    respx.get(JUP + "/swap/v2/order").mock(return_value=httpx.Response(200, json=order_json(transaction="TX")))
+    respx.post(JUP + "/swap/v2/execute").mock(return_value=httpx.Response(200, json={
+        "status": "Success", "signature": "SIG", "inputAmountResult": "3000000", "outputAmountResult": "2000000000"}))
+    with httpx.Client() as http:
+        assert live(http).buy(MINT, 3.0, min_out=2_000_000_000).amount_raw == 2_000_000_000
+
+
+@respx.mock
+def test_paper_buy_refuses_a_quote_worse_than_the_approved_one():
+    respx.get(JUP + "/swap/v2/order").mock(return_value=httpx.Response(200, json=order_json(outAmount="1800000000")))
+    with httpx.Client() as http, pytest.raises(PriceMoved):
+        PaperMemeExecutor(Jupiter(JupiterApi(http, min_interval=0)), network_fee_usd=0.002).buy(
+            MINT, 3.0, min_out=1_940_000_000)

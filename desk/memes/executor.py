@@ -16,6 +16,16 @@ EXECUTE_POLL_SECONDS = 90.0
 EXECUTE_POLL_EVERY = 5.0
 
 
+class PriceMoved(ExecutionError):
+    """The executable order is worse than the quote the buy was approved on. Nothing was signed."""
+
+
+def check_floor(out_amount: int, min_out: int, fee_bps: float, gasless: bool = False) -> None:
+    if min_out and out_amount < min_out:
+        kind = "gasless, " if gasless else ""
+        raise PriceMoved(f"ordem {1 - out_amount / min_out:.1%} abaixo do mínimo aprovado ({kind}taxa de {fee_bps / 100:.1f}%)")
+
+
 def usdc_raw(usd: float) -> int:
     return int(round(usd * 10 ** USDC_DECIMALS))
 
@@ -27,7 +37,7 @@ def raw_usdc(raw: int) -> float:
 class MemeExecutor(Protocol):
     mode: str
 
-    def buy(self, mint: str, usd: float) -> MemeFill: ...
+    def buy(self, mint: str, usd: float, min_out: int = 0) -> MemeFill: ...
 
     def sell(self, mint: str, amount_raw: int) -> MemeFill: ...
 
@@ -56,8 +66,9 @@ class PaperMemeExecutor:
             raise ExecutionError("Jupiter não encontrou rota")
         return quote
 
-    def buy(self, mint: str, usd: float) -> MemeFill:
+    def buy(self, mint: str, usd: float, min_out: int = 0) -> MemeFill:
         q = self._quote(USDC_MINT, mint, usdc_raw(usd))
+        check_floor(q.out_amount, min_out, q.fee_bps)
         return MemeFill("BUY", q.out_amount, raw_usdc(q.in_amount), self._fee)
 
     def sell(self, mint: str, amount_raw: int) -> MemeFill:
@@ -137,7 +148,7 @@ class LiveMemeExecutor:
     def owner(self) -> str:
         return self._wallet.owner
 
-    def _swap(self, input_mint: str, output_mint: str, amount: int) -> tuple[int, int, str | None]:
+    def _swap(self, input_mint: str, output_mint: str, amount: int, min_out: int = 0) -> tuple[int, int, str | None]:
         try:
             order = self._jup.order(input_mint, output_mint, amount, taker=self.owner)
         except FETCH_ERRORS as exc:
@@ -145,6 +156,7 @@ class LiveMemeExecutor:
         if not order.get("transaction") or not order.get("requestId"):
             reason = order.get("errorMessage") or order.get("error") or "?"
             raise ExecutionError(f"Jupiter não montou a transação: {reason}")
+        check_floor(int(order.get("outAmount") or 0), min_out, float(order.get("feeBps") or 0), bool(order.get("gasless")))
         signed = self._wallet.sign(order["transaction"])
         result = self._execute(signed, order["requestId"])
         if result.get("status") == "Failed":
@@ -169,8 +181,8 @@ class LiveMemeExecutor:
                 raise ExecutionUncertain(f"{last} por {EXECUTE_POLL_SECONDS:.0f}s; confira a carteira")
             self._sleep(EXECUTE_POLL_EVERY)
 
-    def buy(self, mint: str, usd: float) -> MemeFill:
-        spent, received, sig = self._swap(USDC_MINT, mint, usdc_raw(usd))
+    def buy(self, mint: str, usd: float, min_out: int = 0) -> MemeFill:
+        spent, received, sig = self._swap(USDC_MINT, mint, usdc_raw(usd), min_out)
         return MemeFill("BUY", received, raw_usdc(spent), self._fee, sig)
 
     def sell(self, mint: str, amount_raw: int) -> MemeFill:

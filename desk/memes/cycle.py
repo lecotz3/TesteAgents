@@ -14,7 +14,7 @@ from desk.analyst.base import AnalystError
 from desk.config import MemesSettings
 from desk.executor.base import ExecutionError, ExecutionUncertain
 from desk.journal import Journal, format_note
-from desk.memes.executor import MemeExecutor, usdc_raw
+from desk.memes.executor import MemeExecutor, PriceMoved, usdc_raw
 from desk.memes.models import USDC_MINT, MemeFill, MemePosition, Pair, Quote, Safety
 from desk.memes.rules import exit_decision, market_rejection, position_size_usd, quote_rejection, safety_rejection
 from desk.memes.sources import FETCH_ERRORS, TokenInfo
@@ -157,6 +157,7 @@ class _MemeCycle:
         self.mark_held()
         self.check_drawdown()
         self.manage_exits()
+        self.check_fee_reserve()
         if not self.store.is_halted() and not self.bad_day():
             self.scan_and_enter()
         self.record_equity()
@@ -272,6 +273,22 @@ class _MemeCycle:
             f"(pico ${peak:.2f}, equity ${equity:.2f}; custos ${self.store.total_costs():.2f}). Ele parou de comprar "
             "e de gastar, mas segue vendendo pelas regras de saída. Para religar: python -m desk memes-resume"
         )
+
+    def check_fee_reserve(self) -> None:
+        """Live sells need SOL for fees: without it Jupiter only offers gasless swaps, which refuse small sizes."""
+        if self.mode != "live" or not self.store.open_positions():
+            return
+        try:
+            problem = self.d.executor.funds_problem(0.0)
+        except FETCH_ERRORS:
+            return
+        if problem == "wallet_sol_short":
+            self.notify_once(
+                f"sol_low:{self.now.date()}",
+                f"[LIVE] Pouco SOL na carteira das memecoins (mínimo {self.s.min_sol_balance:g} SOL) com posições abertas. "
+                "Sem SOL para as taxas, a Jupiter só oferece trocas gasless, que recusam valores pequenos e cobram taxa "
+                "alta: as vendas podem falhar. Mande SOL para a carteira.",
+            )
 
     def bad_day(self) -> bool:
         """Lost daily_loss_pause_pct of the bankroll in 24h: stop buying for now, keep managing exits."""
@@ -594,9 +611,10 @@ class _MemeCycle:
                 self.report.skips["no_cash"] += 1
                 return False
             size = max(self.report.equity * self.s.position_pct, self.s.min_trade_usd)  # alerts: quote a typical size
-        quote = self.check_quotes(pair, safety, size)
-        if quote is None:
+        checked = self.check_quotes(pair, safety, size)
+        if checked is None:
             return True
+        quote, approved_out = checked
 
         vet = None
         if self.s.analyst != "none" and self.d.vetter is not None:
@@ -622,10 +640,10 @@ class _MemeCycle:
             self.decide(pair, "alerted", f"ida e volta {quote:.1%}")
             self.store.block_entry(pair.mint, self.now + timedelta(hours=24), "alertado")
             return True
-        return self.buy(pair, safety, size, quote, vet, alert, x)
+        return self.buy(pair, safety, size, quote, vet, alert, x, approved_out)
 
-    def check_quotes(self, pair: Pair, safety: Safety, size: float) -> float | None:
-        """Round-trip cost of a buy of `size` sold right back, or None if the token must be skipped."""
+    def check_quotes(self, pair: Pair, safety: Safety, size: float) -> tuple[float, int] | None:
+        """Round-trip cost of a buy of `size` sold right back and the tokens it buys, or None to skip the token."""
         amount_in = usdc_raw(size)
         try:
             q_buy = self.d.jupiter.quote(USDC_MINT, pair.mint, amount_in)
@@ -646,7 +664,7 @@ class _MemeCycle:
         if pair.price_usd <= 0 or abs(math.log(quoted_price / pair.price_usd)) > math.log(1 + self.s.max_price_mismatch_pct / 100):
             self.reject(pair, "price_mismatch", f"cotação ${quoted_price:.8g} vs DexScreener ${pair.price_usd:.8g}")
             return None
-        return loss
+        return loss, q_buy.out_amount
 
     def vet(self, pair: Pair, safety: Safety, x: XSignal | None) -> Vet | None:
         self.vet_calls += 1
@@ -686,7 +704,7 @@ class _MemeCycle:
         )
 
     def buy(self, pair: Pair, safety: Safety, size: float, loss: float, vet: Vet | None, alert: str,
-            x: XSignal | None = None) -> bool:
+            x: XSignal | None = None, approved_out: int = 0) -> bool:
         try:
             problem = self.d.executor.funds_problem(size)
         except FETCH_ERRORS as exc:
@@ -699,8 +717,12 @@ class _MemeCycle:
                              f"Carteira das memecoins sem saldo ({problem}): o agente não consegue comprar. "
                              "Veja docs/PENDENCIAS.md (carteira Solana).")
             return False
+        min_out = int(approved_out * (1 - self.s.max_buy_drift_pct / 100))
         try:
-            fill = self.d.executor.buy(pair.mint, size)
+            fill = self.d.executor.buy(pair.mint, size, min_out)
+        except PriceMoved as exc:  # the price ran (or a hidden fee appeared) while Claude was checking: never chase
+            self.reject(pair, "price_moved", str(exc))
+            return True
         except ExecutionUncertain as exc:
             self.error(f"compra de {pair.symbol} incerta: {exc}")
             self.store.block_entry(pair.mint, self.now + timedelta(hours=UNCERTAIN_BLOCK_HOURS), "compra incerta")

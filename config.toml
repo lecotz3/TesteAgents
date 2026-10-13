@@ -105,7 +105,8 @@ max_positions = 4
 max_round_trip_loss = 0.05     # comprar e vender de volta na hora não pode custar mais que 5%
 max_price_impact_pct = 2.0
 max_candidates_checked = 8     # tokens checados a fundo por ciclo
-min_sol_balance = 0.01         # modo real: SOL guardado para as taxas da rede
+min_sol_balance = 0.05         # modo real: SOL para as taxas e ~0,002 SOL de aluguel por token novo na carteira
+max_buy_drift_pct = 3          # a ordem de compra pode sair no máximo 3% pior que a cotação aprovada (senão, não compra)
 
 # Saídas
 stop_loss_pct = 30

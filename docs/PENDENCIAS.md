@@ -33,7 +33,7 @@ Cada passo depende do anterior:
 1. **Telegram (C1).** Obrigatório: sem ele, o `memes-live-check` não libera o modo real. No modo real, um aviso de "compra incerta" ou "não conseguiu vender" exige que você confira a carteira.
 2. **Não deixar o PC dormir.** Hoje ele dorme depois de 3h parado, e dormindo o stop-loss não roda. Rode `powercfg /change standby-timeout-ac 0` (para desfazer, troque `0` por `180`). Deixe o PC na tomada, ligado e logado. Se o agente ficar mais de 15 minutos sem rodar com posições abertas, ele avisa no Telegram quando voltar. Stop-loss na própria Jupiter (que rodaria com o PC desligado) exige no mínimo US$10 por ordem, e as compras aqui são de US$3; com uma banca bem maior isso passa a valer a pena.
 3. **Paper provando que se paga (D8).** Pelo menos 2 semanas e 30 compras e vendas fechadas, com resultado positivo **depois** dos custos. O painel mostra isso no cartão "Pronto p/ dinheiro real?" (também no `memes-status` e no relatório mensal). Se não passar, não ligue o real: o robô não tem vantagem e você descobriu de graça.
-4. **Carteira Solana dedicada (C4).** Carteira nova, só com a banca, mais ~0,05 SOL para taxas. Chave no `.env`, nunca no chat.
+4. **Carteira Solana dedicada (C4).** Carteira nova, só com a banca, mais ~0,1 SOL para taxas. Chave no `.env`, nunca no chat.
 5. **`memes-live-check` dizendo "PRONTO".** Ele confere: modo, as duas travas, chave válida, saldo de SOL e de USDC, e o Telegram.
 6. **Virar a chave.** Em `config.toml`, na seção `[memes]`: `mode = "live"` e `bankroll_start_usd` igual ao USDC da carteira. Renomeie `state\memes.db` para `memes-paper.db`.
 7. **Primeira semana com banca mínima** (US$30–50) e olho no Telegram e no painel. O modo real foi testado com transações simuladas, nunca contra a rede de verdade.
@@ -196,7 +196,7 @@ Na VPS não há navegador para logar no Claude. No **seu PC**, rode `claude setu
 
 ### C4. Carteira Solana para as memecoins (só depois da D8)
 1. **Carteira nova e dedicada:** instale a Phantom ou a Solflare e crie uma carteira **nova**, só para o agente. Nunca use a carteira onde estão seus outros fundos.
-2. **Fundos:** mande para ela só a banca das memecoins, em **USDC** na rede Solana (ex.: US$100), mais **~0,05 SOL** para as taxas da rede (cada operação custa centavos de centavo).
+2. **Fundos:** mande para ela só a banca das memecoins, em **USDC** na rede Solana (ex.: US$100), mais **~0,1 SOL** para as taxas da rede. Cada operação custa centavos de centavo, mas cada token novo prende ~0,002 SOL de aluguel da conta (recuperável fechando contas vazias na carteira). O agente não compra com menos de 0,05 SOL e avisa se faltar SOL com posições abertas: sem SOL, a Jupiter só faz trocas "gasless", que recusam valores abaixo de US$5-10 e cobraram 10% de taxa num teste real. Por isso, também, toda compra é recusada se a ordem final vier mais de 3% pior que a cotação aprovada.
 3. **Chave privada (base58):**
    - Phantom: *Configurações → Gerenciar contas → (a conta) → Mostrar chave privada*.
    - Solflare: *Configurações → (a carteira) → Exportar chave privada*.

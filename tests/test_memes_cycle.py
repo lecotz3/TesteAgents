@@ -8,7 +8,7 @@ from desk.config import MemesSettings
 from desk.executor.base import ExecutionError, ExecutionUncertain
 from desk.journal import Journal
 from desk.memes.cycle import MemeDeps, run_meme_cycle, run_meme_exits
-from desk.memes.executor import PaperMemeExecutor
+from desk.memes.executor import PaperMemeExecutor, PriceMoved
 from desk.memes.models import MemeFill
 from desk.memes.store import MemeStore
 from desk.memes.vetter import Vet
@@ -220,7 +220,7 @@ class LiveLikeExecutor(PaperMemeExecutor):
     def __init__(self, jup, *, funds=None, wallet_amount=None, buy_raises=None, balance=0, sell_raises=None):
         super().__init__(jup, network_fee_usd=0.002)
         self.funds, self.wallet_amount, self.buy_raises, self.balance = funds, wallet_amount, buy_raises, balance
-        self.sell_raises, self.sells = sell_raises, 0
+        self.sell_raises, self.sells, self.min_outs = sell_raises, 0, []
 
     def sell(self, mint, amount_raw):
         self.sells += 1
@@ -239,10 +239,11 @@ class LiveLikeExecutor(PaperMemeExecutor):
     def sellable(self, mint, amount_raw):
         return amount_raw if self.wallet_amount is None else min(amount_raw, self.wallet_amount)
 
-    def buy(self, mint, usd):
+    def buy(self, mint, usd, min_out=0):
+        self.min_outs.append(min_out)
         if self.buy_raises:
             raise self.buy_raises
-        return super().buy(mint, usd)
+        return super().buy(mint, usd, min_out)
 
 
 def test_live_wallet_short_skips_the_buy(tmp_path, store):
@@ -598,3 +599,30 @@ def test_a_gap_without_positions_is_not_worth_an_alert(tmp_path, store):
     notifier = CapturingNotifier()
     run_meme_exits(deps(tmp_path, store, dex=FakeDex({}, discovered=[]), notifier=notifier))
     assert notifier.sent == []
+
+
+def test_the_buy_order_must_not_be_worse_than_the_approved_quote(tmp_path, store):
+    jup = FakeJupiter()
+    ex = LiveLikeExecutor(jup)
+    run_meme_cycle(deps(tmp_path, store, jup=jup, executor=ex))
+    approved = int(3.0 / 0.0015 * 1e6 * 0.99)  # what check_quotes saw for the $3 buy
+    assert len(ex.min_outs) == 1 and ex.min_outs[0] == pytest.approx(approved * 0.97, abs=2)
+
+
+def test_price_moved_while_vetting_skips_the_buy(tmp_path, store):
+    jup = FakeJupiter()
+    ex = LiveLikeExecutor(jup, buy_raises=PriceMoved("ordem 8% pior que a cotação aprovada"))
+    report = run_meme_cycle(deps(tmp_path, store, jup=jup, executor=ex))
+    assert report.entries == 0 and report.skips["price_moved"] == 1 and store.open_positions() == []
+    assert store.recent_decisions(1)[0]["decision"] == "price_moved"
+
+
+def test_low_sol_while_holding_positions_is_alerted_once_a_day(tmp_path, store):
+    open_held(store)
+    jup, notifier = FakeJupiter(), CapturingNotifier()
+    dex = FakeDex({MINT: make_pair(price_usd=0.0015, liquidity_usd=100_000.0)}, discovered=[])
+    for minutes in (0, 3):
+        run_meme_cycle(deps(tmp_path, store, dex=dex, jup=jup, notifier=notifier, now=NOW + timedelta(minutes=minutes),
+                            executor=LiveLikeExecutor(jup, funds="wallet_sol_short")))
+    alerts = [m for m in notifier.sent if "SOL" in m]
+    assert len(alerts) == 1 and "vendas" in alerts[0]
