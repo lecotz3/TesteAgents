@@ -74,12 +74,16 @@ class ClaudeCliAnalyst:
             raise AnalystError(f"claude reportou erro ({subtype})")
         return data
 
-    def estimate(self, market: Market, now: datetime) -> Analysis:
-        args = self.build_args(schema=load_schema(), tools=RESEARCH_TOOLS)
-        data = self._invoke(build_estimate_prompt(market, now), args)
+    def ask(self, prompt: str, schema: dict, tools: str = RESEARCH_TOOLS) -> object:
+        """One sandboxed research question whose answer must match `schema`."""
+        data = self._invoke(prompt, self.build_args(schema=schema, tools=tools))
         structured = data.get("structured_output")
         if structured is None:
             raise AnalystError("claude não devolveu structured_output")
+        return structured
+
+    def estimate(self, market: Market, now: datetime) -> Analysis:
+        structured = self.ask(build_estimate_prompt(market, now), load_schema())
         return parse_analysis(structured, market_id=market.id, backend=self.name, now=now)
 
     def postmortem(self, summary: str) -> str:

@@ -80,7 +80,7 @@ def test_schema_is_strict():
 
 
 def test_clean_env_drops_secrets():
-    env = {"POLY_PRIVATE_KEY": "k", "DESK_LIVE": "x", "TELEGRAM_BOT_TOKEN": "t", "PATH": "p"}
+    env = {"POLY_PRIVATE_KEY": "k", "DESK_LIVE": "x", "TELEGRAM_BOT_TOKEN": "t", "MEMES_PRIVATE_KEY": "m", "PATH": "p"}
     assert clean_env(env) == {"PATH": "p"}
 
 
@@ -152,3 +152,21 @@ def test_clean_env_drops_api_keys_so_the_subscription_is_used():
 def test_prompt_forbids_looking_up_market_odds():
     prompt = build_estimate_prompt(make_market(), NOW)
     assert "Polymarket" in prompt and "Kalshi" in prompt and "odds" in prompt
+
+
+def test_claude_ask_returns_structured_output_for_any_schema(monkeypatch):
+    monkeypatch.setenv("MEMES_PRIVATE_KEY", "wallet-key")
+    schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
+    runner = FakeRunner(stdout=claude_stdout({"verdict": "avoid"}))
+    out = ClaudeCliAnalyst(model="sonnet", timeout=60, runner=runner).ask("pergunta", schema)
+    assert out == {"verdict": "avoid"}
+    args, kwargs = runner.calls[0]
+    assert json.loads(args[args.index("--json-schema") + 1]) == schema
+    assert args[args.index("--tools") + 1] == "WebSearch,WebFetch"
+    assert "MEMES_PRIVATE_KEY" not in kwargs["env"] and kwargs["input"] == "pergunta"
+
+
+def test_claude_ask_without_structured_output_fails():
+    runner = FakeRunner(stdout=json.dumps({"is_error": False, "result": "x"}))
+    with pytest.raises(AnalystError):
+        ClaudeCliAnalyst(model="sonnet", timeout=60, runner=runner).ask("p", {"type": "object"})

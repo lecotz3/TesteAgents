@@ -15,7 +15,7 @@ HERE = Path(__file__).parent
 SCHEMA_PATH = HERE / "schema.json"
 PROMPT_PATH = HERE / "prompt.md"
 POSTMORTEM_PATH = HERE / "postmortem.md"
-SECRET_PREFIXES = ("POLY_", "DESK_", "TELEGRAM_")
+SECRET_PREFIXES = ("POLY_", "DESK_", "TELEGRAM_", "MEMES_")
 # With an API key in the environment the CLIs bill the API instead of the user's subscription.
 API_KEY_VARS = {"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY"}
 MAX_EVIDENCE = 5
