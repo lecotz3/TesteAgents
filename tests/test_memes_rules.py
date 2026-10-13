@@ -73,6 +73,7 @@ def price(p):  # position bought at 0.0015
     ({"opened_at": NOW - timedelta(hours=25)}, price(0.0016), ("max_hold", 1.0)),
     ({}, make_pair(price_usd=0.0016, liquidity_usd=40_000.0), ("liquidity_drained", 1.0)),
     ({}, None, None),  # no price this cycle: hold, never sell blind
+    ({"opened_at": NOW - timedelta(hours=25)}, None, ("max_hold", 1.0)),  # ...unless it is past its time anyway
 ])
 def test_exit_rules(pos_overrides, pair, expected):
     assert exit_decision(make_meme_position(**pos_overrides), pair, NOW, S) == expected

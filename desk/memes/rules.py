@@ -68,9 +68,10 @@ def position_size_usd(*, equity: float, cash: float, s: MemesSettings) -> float:
 
 
 def exit_decision(pos: MemePosition, pair: Pair | None, now: datetime, s: MemesSettings) -> tuple[str, float] | None:
-    """(reason, fraction of the position to sell) or None. Without a fresh price the position is held."""
+    """(reason, fraction of the position to sell) or None. Without a fresh price only the time limit applies."""
+    expired = now - pos.opened_at >= timedelta(hours=s.max_hold_hours)
     if pair is None:
-        return None
+        return ("max_hold", 1.0) if expired else None  # Jupiter can still route a token DexScreener stopped listing
     price, entry, peak = pair.price_usd, pos.entry_price_usd, max(pos.peak_price_usd, pair.price_usd)
     if pair.liquidity_usd < pos.entry_liquidity_usd * (1 - s.liquidity_drain_pct / 100):
         return ("liquidity_drained", 1.0)
@@ -80,6 +81,6 @@ def exit_decision(pos: MemePosition, pair: Pair | None, now: datetime, s: MemesS
         return ("take_profit", s.take_profit_fraction)
     if peak >= entry * (1 + s.trailing_activation_pct / 100) and price <= peak * (1 - s.trailing_stop_pct / 100):
         return ("trailing_stop", 1.0)
-    if now - pos.opened_at >= timedelta(hours=s.max_hold_hours):
+    if expired:
         return ("max_hold", 1.0)
     return None
