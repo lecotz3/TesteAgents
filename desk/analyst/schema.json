@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["fair_prob", "official_resolution_source", "confidence", "evidence", "exit_condition", "reasoning"],
+  "properties": {
+    "fair_prob": {"type": "number", "description": "Probability (0 to 1) that outcome 0 is the result."},
+    "official_resolution_source": {"type": ["string", "null"], "description": "Concrete official source that decides the market, or null."},
+    "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["claim", "url", "published"],
+        "properties": {
+          "claim": {"type": "string"},
+          "url": {"type": "string"},
+          "published": {"type": "string"}
+        }
+      }
+    },
+    "exit_condition": {"type": "string"},
+    "reasoning": {"type": "string"}
+  }
+}
