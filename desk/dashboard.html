@@ -65,6 +65,7 @@
   .empty { color: var(--muted); padding: 8px 0; }
   .group-title { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px;
                  padding-top: 16px; border-top: 2px solid var(--line); }
+  .group-title.first { margin-top: 0; padding-top: 0; border-top: 0; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -79,42 +80,7 @@
   <button id="refresh" type="button">Atualizar</button>
 </header>
 <main>
-  <div id="alerts" class="alerts"></div>
-  <div id="cards" class="cards"></div>
-  <div class="grid2">
-    <section>
-      <h2>Vida do robô (equity, 30 dias)</h2>
-      <div id="chart"></div>
-      <div class="muted" style="font-size:12px;margin-top:6px">
-        Linha tracejada vermelha: abaixo dela o robô é <b>desligado</b>. Cinza: banca inicial.
-      </div>
-    </section>
-    <section>
-      <h2>Último ciclo</h2>
-      <div id="last-cycle"></div>
-    </section>
-  </div>
-  <section>
-    <h2>O que o robô decidiu</h2>
-    <div class="table-wrap"><table id="decisions"></table></div>
-  </section>
-  <section>
-    <h2>Posições abertas</h2>
-    <div class="table-wrap"><table id="positions"></table></div>
-  </section>
-  <section>
-    <h2>Trades</h2>
-    <div class="table-wrap"><table id="trades"></table></div>
-  </section>
-  <section>
-    <h2>Ciclos recentes</h2>
-    <div class="table-wrap"><table id="cycles"></table></div>
-  </section>
-  <section>
-    <details><summary>Diário (trades.txt)</summary><pre id="journal"></pre></details>
-  </section>
-
-  <div class="group-title">
+  <div class="group-title first">
     <h1>Memecoins (Solana)</h1>
     <span id="m-mode" class="badge">…</span>
     <span id="m-life" class="badge">…</span>
@@ -153,6 +119,45 @@
       <details><summary>Diário das memecoins (memes.txt)</summary><pre id="m-journal"></pre></details>
     </section>
   </div>
+
+  <div class="group-title">
+    <h1>Polymarket</h1>
+    <span class="muted">só paper: o Brasil está bloqueado para ordens reais</span>
+  </div>
+  <div id="alerts" class="alerts"></div>
+  <div id="cards" class="cards"></div>
+  <div class="grid2">
+    <section>
+      <h2>Vida do robô (equity, 30 dias)</h2>
+      <div id="chart"></div>
+      <div class="muted" style="font-size:12px;margin-top:6px">
+        Linha tracejada vermelha: abaixo dela o robô é <b>desligado</b>. Cinza: banca inicial.
+      </div>
+    </section>
+    <section>
+      <h2>Último ciclo</h2>
+      <div id="last-cycle"></div>
+    </section>
+  </div>
+  <section>
+    <h2>O que o robô decidiu</h2>
+    <div class="table-wrap"><table id="decisions"></table></div>
+  </section>
+  <section>
+    <h2>Posições abertas</h2>
+    <div class="table-wrap"><table id="positions"></table></div>
+  </section>
+  <section>
+    <h2>Trades</h2>
+    <div class="table-wrap"><table id="trades"></table></div>
+  </section>
+  <section>
+    <h2>Ciclos recentes</h2>
+    <div class="table-wrap"><table id="cycles"></table></div>
+  </section>
+  <section>
+    <details><summary>Diário (trades.txt)</summary><pre id="journal"></pre></details>
+  </section>
 
   <section>
     <details><summary>Log técnico (desk.log)</summary><pre id="log"></pre></details>
@@ -363,7 +368,7 @@ function renderLastCycle(s) {
 function render(s) {
   renderHeader(s); renderAlerts(s); renderCards(s); renderChart(s); renderLastCycle(s);
   table("decisions", [["Quando"], ["Mercado"], ["Preço", "num"], ["Justo (Claude)", "num"], ["Vantagem", "num"], ["Confiança"], ["Decisão"], ["Detalhe"]],
-    s.decisions.map((d) => [[fmtTime(d.ts)], [marketLink(d.question, d.slug), "q"], [fmtPct(d.price), "num"], [fmtPct(d.fair_prob), "num"],
+    s.decisions.slice(0, 20).map((d) => [[fmtTime(d.ts)], [marketLink(d.question, d.slug), "q"], [fmtPct(d.price), "num"], [fmtPct(d.fair_prob), "num"],
       [`${fmtNum(d.edge_pp, 1)} pp`, "num"], [CONFIDENCE[d.confidence] || d.confidence || "—"], [label(d.decision)], [d.detail || ""]]),
     "Nenhuma decisão registrada ainda: aparecem aqui os mercados que o Claude analisou e o que o robô fez com cada um.");
   table("positions", [["Mercado"], ["Lado"], ["Cotas", "num"], ["Entrada", "num"], ["Custo", "num"], ["Justo na entrada", "num"], ["Sair até"], ["Condição de saída"]],
