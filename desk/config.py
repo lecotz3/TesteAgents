@@ -67,6 +67,53 @@ class EconomySettings(BaseModel):
     max_daily_burn_pct: float = Field(0.015, gt=0, le=1)  # rent + analyses in 24h, as a share of equity
 
 
+class MemesSettings(BaseModel):
+    """Memecoin agent (Solana). Same spirit as the desk: hard filters in code, small sizes, it pays to exist."""
+
+    enabled: bool = True
+    mode: Literal["paper", "live"] = "paper"
+    bankroll_start_usd: float = Field(100.0, gt=0)
+    # market filters (DexScreener)
+    min_liquidity_usd: float = Field(50_000.0, ge=0)
+    min_age_minutes: float = Field(60.0, ge=0)
+    max_age_hours: float = Field(72.0, gt=0)
+    min_volume_h1_usd: float = Field(25_000.0, ge=0)
+    min_txns_h1: int = Field(200, ge=0)
+    min_buy_ratio_h1: float = Field(0.45, ge=0, le=1)
+    max_change_h1_pct: float = 150.0
+    min_change_h1_pct: float = -15.0
+    min_market_cap_usd: float = Field(150_000.0, ge=0)
+    max_market_cap_usd: float = Field(25_000_000.0, gt=0)
+    # safety filters (RugCheck)
+    min_lp_locked_pct: float = Field(80.0, ge=0, le=100)
+    max_top10_holders_pct: float = Field(30.0, ge=0, le=100)
+    max_insider_pct: float = Field(10.0, ge=0, le=100)
+    max_creator_pct: float = Field(5.0, ge=0, le=100)
+    # execution (Jupiter)
+    position_pct: float = Field(0.03, gt=0, le=1)
+    min_trade_usd: float = Field(1.0, gt=0)
+    max_positions: int = Field(4, ge=1)
+    max_round_trip_loss: float = Field(0.05, gt=0, lt=1)
+    max_price_impact_pct: float = Field(2.0, gt=0)
+    max_candidates_checked: int = Field(8, ge=1)  # RugCheck/Jupiter calls per cycle stay polite
+    network_fee_usd: float = Field(0.002, ge=0)  # per transaction, paper estimate
+    # exits
+    stop_loss_pct: float = Field(30.0, gt=0, lt=100)
+    take_profit_pct: float = Field(100.0, gt=0)
+    take_profit_fraction: float = Field(0.5, gt=0, le=1)
+    trailing_stop_pct: float = Field(30.0, gt=0, lt=100)
+    trailing_activation_pct: float = Field(20.0, ge=0)
+    max_hold_hours: float = Field(24.0, gt=0)
+    liquidity_drain_pct: float = Field(50.0, gt=0, lt=100)
+    reentry_cooldown_hours: float = Field(24.0, ge=0)
+    # the agent pays to exist
+    analyst: Literal["claude", "none"] = "claude"
+    cost_per_vet_usd: float = Field(0.01, ge=0)
+    max_vets_per_day: int = Field(30, ge=0)
+    daily_rent_usd: float = Field(0.0, ge=0)
+    drawdown_halt: float = Field(0.40, gt=0, lt=1)
+
+
 class MonthlySettings(BaseModel):
     subscription_cost_usd: float = Field(20.0, ge=0)
     monthly_reserve_usd: float = Field(50.0, ge=0)
@@ -82,6 +129,7 @@ class Settings(BaseModel):
     exits: ExitSettings = Field(default_factory=ExitSettings)
     monthly: MonthlySettings = Field(default_factory=MonthlySettings)
     economy: EconomySettings = Field(default_factory=EconomySettings)
+    memes: MemesSettings = Field(default_factory=MemesSettings)
 
     @property
     def daily_rent(self) -> float:

@@ -1,0 +1,84 @@
+"""Payloads shaped like the real DexScreener / RugCheck / Jupiter responses (observed 2026-10-13)."""
+from __future__ import annotations
+
+from datetime import timedelta
+
+from desk.memes.models import MemePosition, Pair, Safety
+from tests.factories import NOW
+
+MINT = "3sKaoPryg4KrXubLWtoqF7MznLT7QNqKRxMMkkxTpump"
+USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+
+
+def raw_pair(mint: str = MINT, **overrides) -> dict:
+    pair = {
+        "chainId": "solana", "dexId": "pumpswap", "url": f"https://dexscreener.com/solana/{mint[:8]}",
+        "pairAddress": "HvYfFr8nm6bn9V93TDDMgqWwS2D2LsMn1Y3rDCToqeAB",
+        "baseToken": {"address": mint, "name": "Save The Seals", "symbol": "SEALS"},
+        "quoteToken": {"address": "So11111111111111111111111111111111111111112", "name": "Wrapped SOL", "symbol": "SOL"},
+        "priceNative": "0.0000071", "priceUsd": "0.001389",
+        "txns": {"m5": {"buys": 120, "sells": 110}, "h1": {"buys": 3380, "sells": 3686},
+                 "h6": {"buys": 6290, "sells": 6052}, "h24": {"buys": 6290, "sells": 6052}},
+        "volume": {"h24": 837266.15, "h6": 837266.15, "h1": 498398.65, "m5": 13288.47},
+        "priceChange": {"m5": 2.1, "h1": 35.0, "h6": 120.0, "h24": 120.0},
+        "liquidity": {"usd": 107597.06, "base": 39334119, "quote": 495.0},
+        "fdv": 1288164, "marketCap": 1288164,
+        "pairCreatedAt": int((NOW - timedelta(hours=3)).timestamp() * 1000),
+        "info": {"imageUrl": "x", "websites": [{"label": "Website", "url": "https://seals.fun"}],
+                 "socials": [{"type": "twitter", "url": "https://x.com/seals"}]},
+    }
+    pair.update(overrides)
+    return pair
+
+
+def raw_rugcheck(**overrides) -> dict:
+    report = {
+        "mint": MINT, "mintAuthority": None, "freezeAuthority": None, "rugged": False,
+        "score": 1, "score_normalised": 1, "risks": [],
+        "token": {"supply": 1_000_000_000_000_000, "decimals": 6, "mintAuthority": None, "freezeAuthority": None},
+        "topHolders": [
+            {"owner": "HvYfFr8nm6bn9V93TDDMgqWwS2D2LsMn1Y3rDCToqeAB", "pct": 30.0, "insider": False},  # the AMM pool
+            *({"owner": f"holder{i}", "pct": 2.0, "insider": False} for i in range(12)),
+        ],
+        "knownAccounts": {"HvYfFr8nm6bn9V93TDDMgqWwS2D2LsMn1Y3rDCToqeAB": {"name": "Pump Fun AMM", "type": "AMM"}},
+        "markets": [
+            {"marketType": "pump_fun_amm", "pubkey": "HvYfFr8nm6bn9V93TDDMgqWwS2D2LsMn1Y3rDCToqeAB",
+             "lp": {"lpLockedPct": 100.0, "lpLockedUSD": 107484.0, "baseUSD": 53742.0, "quoteUSD": 53742.0}},
+            {"marketType": "meteoraDlmm", "pubkey": "met1",
+             "lp": {"lpLockedPct": 0.0, "lpLockedUSD": 0.0, "baseUSD": 1000.0, "quoteUSD": 1000.0}},
+        ],
+        "insiderNetworks": [{"id": "proud-jade-falcon", "size": 5, "currentHolding": 30_000_000_000_000}],
+        "creatorBalance": 0, "transferFee": {"pct": 0, "maxAmount": 0},
+    }
+    report.update(overrides)
+    return report
+
+
+def make_pair(**overrides) -> Pair:
+    base = dict(
+        mint=MINT, symbol="SEALS", name="Save The Seals", pair_address="HvYf", dex="pumpswap", price_usd=0.001389,
+        liquidity_usd=107597.0, market_cap_usd=1288164.0, volume_h1_usd=498398.0, buys_h1=3380, sells_h1=3686,
+        change_h1_pct=35.0, change_h6_pct=120.0, created_at=NOW - timedelta(hours=3), has_socials=True,
+        url="https://dexscreener.com/solana/x",
+    )
+    base.update(overrides)
+    return Pair(**base)
+
+
+def make_safety(**overrides) -> Safety:
+    base = dict(
+        mint_authority=None, freeze_authority=None, rugged=False, danger_risks=(), lp_locked_pct=98.0,
+        top10_pct=24.0, insider_pct=3.0, creator_pct=0.0, transfer_fee_pct=0.0, decimals=6, score=1,
+    )
+    base.update(overrides)
+    return Safety(**base)
+
+
+def make_meme_position(**overrides) -> MemePosition:
+    base = dict(
+        mint=MINT, symbol="SEALS", name="Save The Seals", decimals=6, amount_raw=2_000_000_000, cost_usd=3.0,
+        entry_price_usd=0.0015, peak_price_usd=0.0015, entry_liquidity_usd=100_000.0,
+        opened_at=NOW - timedelta(hours=1),
+    )
+    base.update(overrides)
+    return MemePosition(**base)
