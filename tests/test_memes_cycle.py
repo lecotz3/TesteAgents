@@ -626,3 +626,33 @@ def test_low_sol_while_holding_positions_is_alerted_once_a_day(tmp_path, store):
                             executor=LiveLikeExecutor(jup, funds="wallet_sol_short")))
     alerts = [m for m in notifier.sent if "SOL" in m]
     assert len(alerts) == 1 and "vendas" in alerts[0]
+
+
+class RentExecutor(LiveLikeExecutor):
+    def __init__(self, jup, raises=None):
+        super().__init__(jup)
+        self.reclaims, self.raises = 0, raises
+
+    def reclaim_rent(self):
+        self.reclaims += 1
+        if self.raises:
+            raise self.raises
+        return 2
+
+
+def test_live_cycle_reclaims_token_account_rent_at_most_hourly(tmp_path, store):
+    jup = FakeJupiter()
+    ex = RentExecutor(jup)
+    dex = FakeDex({}, discovered=[])
+    for minutes in (0, 3, 30, 61):
+        run_meme_cycle(deps(tmp_path, store, dex=dex, jup=jup, executor=ex, now=NOW + timedelta(minutes=minutes)))
+    assert ex.reclaims == 2
+    run_meme_exits(deps(tmp_path, store, dex=dex, jup=jup, executor=ex, now=NOW + timedelta(hours=3)))
+    assert ex.reclaims == 2  # the 1-minute loop stays lean
+
+
+def test_a_failed_rent_sweep_is_only_an_error(tmp_path, store):
+    jup = FakeJupiter()
+    report = run_meme_cycle(deps(tmp_path, store, dex=FakeDex({}, discovered=[]), jup=jup,
+                                 executor=RentExecutor(jup, raises=httpx.ConnectError("rpc down"))))
+    assert any("aluguel" in e for e in report.errors)

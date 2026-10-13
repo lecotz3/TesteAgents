@@ -1,4 +1,5 @@
 import base64
+import json
 
 import httpx
 import pytest
@@ -250,3 +251,66 @@ def test_paper_buy_refuses_a_quote_worse_than_the_approved_one():
     with httpx.Client() as http, pytest.raises(PriceMoved):
         PaperMemeExecutor(Jupiter(JupiterApi(http, min_interval=0)), network_fee_usd=0.002).buy(
             MINT, 3.0, min_out=1_940_000_000)
+
+
+TOKEN = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+TOKEN22 = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+
+
+def token_account(pubkey, mint, amount, program):
+    return {"pubkey": pubkey, "account": {"owner": program, "data": {"parsed": {"info": {
+        "mint": mint, "tokenAmount": {"amount": str(amount)}}}}}}
+
+
+@respx.mock
+def test_reclaim_rent_closes_only_empty_token_accounts_back_to_the_wallet():
+    solders = pytest.importorskip("solders")
+    from solders.keypair import Keypair
+    from solders.transaction import VersionedTransaction
+
+    me = Keypair()
+    owner = str(me.pubkey())
+    empty_a, empty_b, held, usdc = (str(Keypair().pubkey()) for _ in range(4))
+    sent = []
+
+    def reply(request):
+        body = json.loads(request.read())
+        method = body["method"]
+        if method == "getTokenAccountsByOwner":
+            program = body["params"][1]["programId"]
+            assert body["params"][0] == owner
+            accounts = {TOKEN: [token_account(empty_a, MINT, 0, TOKEN), token_account(held, "H" * 44, 5, TOKEN),
+                                token_account(usdc, USDC, 0, TOKEN)],
+                        TOKEN22: [token_account(empty_b, "Z" * 44, 0, TOKEN22)]}[program]
+            return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {"value": accounts}})
+        if method == "getLatestBlockhash":
+            return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {
+                "value": {"blockhash": "11111111111111111111111111111111", "lastValidBlockHeight": 1}}})
+        assert method == "sendTransaction"
+        sent.append(body["params"])
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": "SIG"})
+
+    respx.post(RPC).mock(side_effect=reply)
+    with httpx.Client() as http:
+        ex = LiveMemeExecutor(Jupiter(JupiterApi(http, min_interval=0)), load_wallet(str(me)), SolanaRpc(http, RPC),
+                              network_fee_usd=0.002, min_sol=0.01)
+        assert ex.reclaim_rent() == 2
+    [(tx_b64, opts)] = sent
+    assert opts["encoding"] == "base64"
+    tx = VersionedTransaction.from_bytes(base64.b64decode(tx_b64))
+    assert tx.verify_with_results() == [True]  # signed by the wallet, which also pays the fee
+    keys = [str(k) for k in tx.message.account_keys]
+    closes = [(keys[ix.program_id_index], bytes(ix.data), [keys[a] for a in ix.accounts]) for ix in tx.message.instructions]
+    assert sorted(closes) == sorted([(TOKEN, b"\x09", [empty_a, owner, owner]), (TOKEN22, b"\x09", [empty_b, owner, owner])])
+    assert solders is not None
+
+
+@respx.mock
+def test_reclaim_rent_with_nothing_to_close_sends_nothing():
+    respx.post(RPC).mock(return_value=httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {"value": []}}))
+    with httpx.Client() as http:
+        assert live(http).reclaim_rent() == 0
+
+
+def test_paper_has_no_rent_to_reclaim():
+    assert PaperMemeExecutor(None, network_fee_usd=0.0).reclaim_rent() == 0

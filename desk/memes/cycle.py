@@ -158,6 +158,7 @@ class _MemeCycle:
         self.check_drawdown()
         self.manage_exits()
         self.check_fee_reserve()
+        self.reclaim_rent()
         if not self.store.is_halted() and not self.bad_day():
             self.scan_and_enter()
         self.record_equity()
@@ -289,6 +290,22 @@ class _MemeCycle:
                 "Sem SOL para as taxas, a Jupiter só oferece trocas gasless, que recusam valores pequenos e cobram taxa "
                 "alta: as vendas podem falhar. Mande SOL para a carteira.",
             )
+
+    def reclaim_rent(self) -> None:
+        """Hourly in live mode: close the token accounts that sells left empty, getting their SOL rent back."""
+        if self.mode != "live":
+            return
+        last = self.store.get_meta("rent_sweep")
+        if last and self.now - datetime.fromisoformat(last) < timedelta(hours=1):
+            return
+        self.store.set_meta("rent_sweep", self.now.isoformat())
+        try:
+            closed = self.d.executor.reclaim_rent()
+        except (*FETCH_ERRORS, ExecutionError) as exc:
+            self.error(f"não consegui recuperar o aluguel das contas vazias: {type(exc).__name__}: {exc}")
+            return
+        if closed:
+            log.info("memes: %d conta(s) de token vazia(s) fechada(s); o aluguel volta em SOL para a carteira", closed)
 
     def bad_day(self) -> bool:
         """Lost daily_loss_pause_pct of the bankroll in 24h: stop buying for now, keep managing exits."""

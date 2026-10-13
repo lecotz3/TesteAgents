@@ -25,6 +25,7 @@ DISCOVERY_FEEDS = (
 )
 BATCH = 30  # DexScreener's limit of addresses per /tokens call
 FETCH_ERRORS = (httpx.HTTPError, ValueError)
+TOKEN_PROGRAMS = ("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb")
 # Concentrated-liquidity pools and order books: positions belong to individual LPs, no LP token exists to lock.
 NO_LP_TOKEN = ("clmm", "dlmm", "whirlpool", "orca", "manifest", "phoenix", "openbook")
 
@@ -281,6 +282,23 @@ class SolanaRpc:
 
     def sol_balance(self, owner: str) -> float:
         return int(self._call("getBalance", [owner])["value"]) / 1e9
+
+    def empty_token_accounts(self, owner: str) -> list[tuple[str, str, str]]:
+        """(account, token program, mint) of every zero-balance token account of `owner`, classic SPL and Token-2022."""
+        empty = []
+        for program in TOKEN_PROGRAMS:
+            accounts = self._call("getTokenAccountsByOwner", [owner, {"programId": program}, {"encoding": "jsonParsed"}])
+            for a in accounts["value"]:
+                info = a["account"]["data"]["parsed"]["info"]
+                if int(info["tokenAmount"]["amount"]) == 0:
+                    empty.append((a["pubkey"], a["account"]["owner"], info["mint"]))
+        return empty
+
+    def latest_blockhash(self) -> str:
+        return self._call("getLatestBlockhash", [{"commitment": "confirmed"}])["value"]["blockhash"]
+
+    def send_transaction(self, tx_b64: str) -> str:
+        return self._call("sendTransaction", [tx_b64, {"encoding": "base64"}])
 
     def token_balance(self, owner: str, mint: str) -> int:
         """Raw amount of `mint` across every token account of `owner` (classic SPL and Token-2022)."""

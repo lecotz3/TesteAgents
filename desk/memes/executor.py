@@ -7,7 +7,7 @@ from typing import Callable, Protocol
 
 from desk.config import ConfigError
 from desk.executor.base import ExecutionError, ExecutionUncertain
-from desk.memes.models import USDC_DECIMALS, USDC_MINT, MemeFill, Quote
+from desk.memes.models import SOL_MINT, USDC_DECIMALS, USDC_MINT, MemeFill, Quote
 from desk.memes.sources import FETCH_ERRORS, Jupiter, SolanaRpc
 
 
@@ -47,6 +47,8 @@ class MemeExecutor(Protocol):
 
     def wallet_balance(self, mint: str) -> int: ...
 
+    def reclaim_rent(self) -> int: ...
+
 
 class PaperMemeExecutor:
     """Fills at the exact amounts Jupiter would execute right now, plus an estimate of the network fee."""
@@ -83,6 +85,9 @@ class PaperMemeExecutor:
 
     def wallet_balance(self, mint: str) -> int:
         return 0  # paper has no wallet, and its fills are never uncertain
+
+    def reclaim_rent(self) -> int:
+        return 0
 
 
 class Wallet(Protocol):
@@ -201,3 +206,27 @@ class LiveMemeExecutor:
 
     def wallet_balance(self, mint: str) -> int:
         return self._rpc.token_balance(self.owner, mint)
+
+    def reclaim_rent(self, limit: int = 10) -> int:
+        """Every token bought opens an account that holds ~0.0015 SOL of rent. Once a sell empties it, closing it
+        sends that SOL back to the wallet. Built here, not by Jupiter: only CloseAccount, only empty accounts, only
+        to the wallet itself. USDC and wrapped SOL accounts are kept."""
+        from solders.hash import Hash
+        from solders.instruction import AccountMeta, Instruction
+        from solders.message import MessageV0
+        from solders.pubkey import Pubkey
+        from solders.signature import Signature
+        from solders.transaction import VersionedTransaction
+
+        empty = [a for a in self._rpc.empty_token_accounts(self.owner) if a[2] not in (USDC_MINT, SOL_MINT)][:limit]
+        if not empty:
+            return 0
+        owner = Pubkey.from_string(self.owner)
+        close_account = bytes([9])  # SPL Token / Token-2022 instruction CloseAccount
+        ixs = [Instruction(Pubkey.from_string(program), close_account, [
+            AccountMeta(Pubkey.from_string(account), False, True), AccountMeta(owner, False, True), AccountMeta(owner, True, False),
+        ]) for account, program, _ in empty]
+        msg = MessageV0.try_compile(owner, ixs, [], Hash.from_string(self._rpc.latest_blockhash()))
+        unsigned = base64.b64encode(bytes(VersionedTransaction.populate(msg, [Signature.default()]))).decode()
+        self._rpc.send_transaction(self._wallet.sign(unsigned))
+        return len(ixs)

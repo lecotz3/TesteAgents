@@ -196,7 +196,7 @@ Na VPS não há navegador para logar no Claude. No **seu PC**, rode `claude setu
 
 ### C4. Carteira Solana para as memecoins (só depois da D8)
 1. **Carteira nova e dedicada:** instale a Phantom ou a Solflare e crie uma carteira **nova**, só para o agente. Nunca use a carteira onde estão seus outros fundos.
-2. **Fundos:** mande para ela só a banca das memecoins, em **USDC** na rede Solana (ex.: US$100), mais **~0,1 SOL** para as taxas da rede. Cada operação custa centavos de centavo, mas cada token novo prende ~0,002 SOL de aluguel da conta (recuperável fechando contas vazias na carteira). O agente não compra com menos de 0,05 SOL e avisa se faltar SOL com posições abertas: sem SOL, a Jupiter só faz trocas "gasless", que recusam valores abaixo de US$5-10 e cobraram 10% de taxa num teste real. Por isso, também, toda compra é recusada se a ordem final vier mais de 3% pior que a cotação aprovada.
+2. **Fundos:** mande para ela só a banca das memecoins, em **USDC** na rede Solana (ex.: US$100), mais **~0,1 SOL** para as taxas da rede. Cada operação custa centavos de centavo, mas cada token novo prende ~0,0015 SOL de aluguel da conta. O agente fecha sozinho, de hora em hora, as contas que as vendas deixaram vazias, e esse SOL volta para a carteira. O agente não compra com menos de 0,05 SOL e avisa se faltar SOL com posições abertas: sem SOL, a Jupiter só faz trocas "gasless", que recusam valores abaixo de US$5-10 e cobraram 10% de taxa num teste real. Por isso, também, toda compra é recusada se a ordem final vier mais de 3% pior que a cotação aprovada.
 3. **Chave privada (base58):**
    - Phantom: *Configurações → Gerenciar contas → (a conta) → Mostrar chave privada*.
    - Solflare: *Configurações → (a carteira) → Exportar chave privada*.
