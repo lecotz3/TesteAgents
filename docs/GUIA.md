@@ -140,10 +140,18 @@ Ele roda em dois ritmos. A cada **3 minutos**, o ciclo completo descobre, filtra
 .venv\Scripts\python -m desk memes-status      # banca, posições, trades
 .venv\Scripts\python -m desk memes-live-check  # confere carteira e saldos do modo real (não negocia)
 .venv\Scripts\python -m desk memes-resume      # religa depois de desligado
+.venv\Scripts\python -m desk memes-sell-all --yes  # emergência: vende tudo agora e pausa as compras
 ```
 
 - **Paper:** cada compra e venda simulada usa a cotação exata que a Jupiter executaria naquele instante, mais uma estimativa da taxa da rede.
 - **Real:** fica atrás de duas travas: `[memes] mode = "live"` e `MEMES_LIVE=I_UNDERSTAND`. A chave da carteira dedicada (`MEMES_PRIVATE_KEY`) só assina a parte dela em cada transação, nunca é registrada no log e nunca chega ao Claude. Passo a passo: `docs/PENDENCIAS.md`, C4.
+- **Proteções do modo real** (todas testadas com respostas simuladas; a rede de verdade só entra quando você ligar):
+  - A compra é recusada se a ordem final da Jupiter vier mais de 3% pior que a cotação aprovada. Isso pega preço que correu durante a checagem do Claude e a troca "gasless" (sem SOL na carteira), que num teste real cobrou 10% de taxa.
+  - Resposta perdida: o agente pergunta de novo à Jupiter por até 90 s, com a mesma transação assinada (ela nunca executa duas vezes). Se ainda ficar incerta, ele confere a carteira por 10 min: compra que entrou vira posição com stop; venda que saiu é registrada pelo preço da tentativa.
+  - Aluguel: cada token novo prende ~0,0015 SOL numa conta da carteira. De hora em hora ele fecha as contas que as vendas deixaram vazias, e o SOL volta.
+  - Avisa no Telegram se faltar SOL com posições abertas (sem SOL as vendas pequenas falham) e se ficou mais de 15 min sem rodar com posições abertas (PC dormindo).
+  - `memes-live-check` pede à Jupiter uma troca real de US$1 para a sua carteira e a assina localmente **sem enviar**.
+- **Jupiter:** usa `api.jup.ag` (o antigo `lite-api` está sendo desligado). Sem chave: 1 chamada a cada 2 s, o que já basta. Uma chave grátis em developers.jup.ag/portal (`MEMES_JUPITER_API_KEY` no `.env`) dobra isso.
 - **Só alertas:** `auto_trade = false`. Ele manda os tokens aprovados no Telegram, com link do fomo.family, e você decide.
 - **Paga para existir:** cada checagem do Claude custa US$0,01. Caiu 40% do pico, é desligado: para de comprar e de gastar, mas segue vendendo pelas regras.
 - **Freio diário:** perdeu 15% da banca em 24h, pausa as compras até a queda das últimas 24h voltar abaixo disso (`daily_loss_pause_pct`). As vendas continuam.

@@ -8,19 +8,19 @@ Tudo que eu (Claude) não posso fazer por você: credenciais, dinheiro e decisõ
 
 | Item | Estado |
 |---|---|
-| Código | Pronto, 438 testes passando, na branch `feat/polymarket-desk` (PR #1 no GitHub) |
+| Código | Pronto, 481 testes passando, na branch `feat/polymarket-desk` (PR #1 no GitHub) |
 | Agendador do Windows | **Ligado.** `PolymarketDesk` roda um ciclo a cada 10 min (paper); `PolymarketDeskMemes` roda as memecoins a cada 3 min (paper); `PolymarketDeskMemesExits` confere as saídas das memecoins a cada 1 min; `PolymarketDeskMonthly` roda todo dia e relata 1x por mês |
-| Modo paper | Rodando sozinho: cada ciclo varre ~1000 mercados, ~470 passam no filtro, o Claude analisa até 3. Ainda sem entradas (nenhuma distorção ≥ 8pp) e sem erros |
+| Modo paper | Rodando sozinho: cada ciclo varre ~1000 mercados e o Claude analisa até 3. Desde 13/10 à noite a sua rede às vezes não resolve os endereços do Polymarket (DNS); nesses ciclos ele não varre nada e registra o erro. É o mesmo bloqueio do Brasil: não contorne |
 | Economia | O robô paga para existir: aluguel diário (assinatura rateada) + US$0,01 por análise, saindo do caixa dele. Se não lucrar mais que isso, é **desligado** na linha de 40% |
 | Painel | `scripts\dashboard.cmd` (duplo clique) ou `python -m desk dashboard` → http://127.0.0.1:8765 |
 | Modo real (Polymarket) | **Bloqueado para você**: em 13/10 o próprio Polymarket respondeu `Geobloqueio: BLOQUEADO (país=BR região=SP)`. Veja "Caminho para o dinheiro real" |
-| Memecoins (Solana) | **Agente pronto em paper**: compra e vende sozinho com cotações reais da Jupiter, banca própria de US$100 (`state\memes.db`). Tarefa `PolymarketDeskMemes` a cada 3 min. No primeiro ciclo agendado (13/10, 11:33) o Claude vetou o único token que chegou até ele (sem fontes, possível cópia de outro ticker); ainda sem compras. Modo real pronto no código, travado até você criar a carteira (C4) |
+| Memecoins (Solana) | **Agente pronto em paper**: compra e vende sozinho com cotações reais da Jupiter, banca própria de US$100 (`state\memes.db`). Ciclo completo a cada 3 min e saídas a cada 1 min. Primeiras compras em 13/10: VEIL e SEALS (paper). Modo real pronto e protegido no código (ordem pior que a aprovada é recusada, resposta perdida é conferida na carteira, aluguel das contas volta, aviso de SOL baixo e de PC dormindo, `memes-sell-all`), travado até você ligar |
 
 ---
 
 ## Caminho para o dinheiro real
 
-**Resposta curta:** hoje só um dos dois robôs pode receber dinheiro real com você, o de **memecoins**. E ele ainda não deveria, porque o paper não provou nada (até agora ele não fez nenhuma compra).
+**Resposta curta:** hoje só um dos dois robôs pode receber dinheiro real com você, o de **memecoins**. E ele ainda não deveria, porque o paper ainda não provou nada (as primeiras compras simuladas são de 13/10; a meta é 14 dias e 30 trades fechados com lucro).
 
 ### Polymarket: não dá, a partir do Brasil
 A checagem oficial do Polymarket (`python -m desk live-check`) respondeu **BLOQUEADO, país=BR, região=SP**. O robô recusa ordem real nessa situação, e isso não é falha dele: é a regra do Polymarket para o seu local. Usar VPN ou VPS em outro país para contornar isso viola os termos, e o Polymarket pode congelar o saldo. Por isso eu não configuro e não recomendo.
