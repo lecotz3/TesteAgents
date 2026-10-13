@@ -123,13 +123,14 @@ Segundo agente, com banca, registro e diário próprios (`state\memes.db`, `stat
 
 | Etapa | Quem decide | O que acontece |
 |---|---|---|
-| Descoberta | DexScreener | Tokens que acabaram de comprar perfil, de pagar destaque ou de ser assumidos pela comunidade |
-| Filtro de mercado | Código | Liquidez, idade (1h a 72h), volume e negócios na última hora, pressão de compra, sem alta vertical, market cap |
+| Descoberta | DexScreener + Jupiter | Novidades do DexScreener (perfis, destaques pagos, comunidades) e as listas da Jupiter: mais negociados, mais orgânicos e em alta (~260 tokens por ciclo) |
+| Filtro de mercado | Código | Liquidez, idade (1h a 72h), volume e negócios na última hora, pressão de compra, sem alta vertical, market cap e o **organic score** da Jupiter (nota de negociação real, não de bots) |
+| X (sem custo) | Código + FxTwitter | Lê o post ou o perfil do X que o token divulga: views, likes e quem postou, ou seguidores e idade do perfil. Rejeita link apagado, narrativa fraca (poucas views/likes) e perfil sem seguidores. Os que passam são ordenados pelo alcance da narrativa |
 | Segurança | Código + RugCheck | Sem poder de imprimir ou congelar, liquidez travada, holders espalhados, sem taxa de transferência |
 | Custo real | Código + Jupiter | Ida e volta ≤ 5%, impacto ≤ 2%, existe rota de venda, preço da cotação bate com o DexScreener |
-| Reputação | Claude (só veta) | Busca o token pelo endereço na web e no X: golpe, cópia, imitação, propaganda paga |
+| Reputação | Claude (só veta) | Recebe os dados do X e busca o token pelo endereço na web e no X: golpe, cópia, imitação, conta comprada, post que não é sobre o token. Veta por sinal de alerta, não por falta de notícia (token de poucas horas quase nunca tem) |
 | Compra | Código | 3% da banca, até 4 tokens ao mesmo tempo |
-| Venda | Código | Stop -30%, metade ao dobrar, stop móvel de 30% do pico, liquidez caindo pela metade, 24h no máximo |
+| Venda | Código | Stop -30%, metade ao dobrar, stop móvel de 30% do pico, liquidez caindo pela metade, 24h no máximo, e **vende tudo se o post/perfil do X do token for apagado** depois da compra |
 
 ```powershell
 .venv\Scripts\python -m desk memes             # um ciclo agora
@@ -142,6 +143,8 @@ Segundo agente, com banca, registro e diário próprios (`state\memes.db`, `stat
 - **Real:** fica atrás de duas travas: `[memes] mode = "live"` e `MEMES_LIVE=I_UNDERSTAND`. A chave da carteira dedicada (`MEMES_PRIVATE_KEY`) só assina a parte dela em cada transação, nunca é registrada no log e nunca chega ao Claude. Passo a passo: `docs/PENDENCIAS.md`, C4.
 - **Só alertas:** `auto_trade = false`. Ele manda os tokens aprovados no Telegram, com link do fomo.family, e você decide.
 - **Paga para existir:** cada checagem do Claude custa US$0,01. Caiu 40% do pico, é desligado: para de comprar e de gastar, mas segue vendendo pelas regras.
+- **Prova em paper:** o painel ("Pronto p/ dinheiro real?"), o `memes-status`, o `memes-live-check` e o relatório mensal mostram quantos dias, trades fechados e qual resultado depois dos custos o paper já tem. Meta: 14 dias, 30 trades e lucro.
+- **X sem custo, com limites:** a busca de menções no X é paga (a API oficial não tem plano grátis desde fev/2026). O código lê o que o próprio token divulga pelo FxTwitter (serviço gratuito, não oficial, que pode mudar) e o Claude procura menções pela busca da web. Se um dia quiser contagem de menções e autores, a fonte do X é uma interface (`XSource` em `desk/memes/x.py`): dá para plugar a API oficial ou o twitterapi.io sem mexer no resto.
 
 ## Regras para lembrar
 

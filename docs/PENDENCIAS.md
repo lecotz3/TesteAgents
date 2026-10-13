@@ -8,7 +8,7 @@ Tudo que eu (Claude) não posso fazer por você: credenciais, dinheiro e decisõ
 
 | Item | Estado |
 |---|---|
-| Código | Pronto, 361 testes passando, na branch `feat/polymarket-desk` (PR #1 no GitHub) |
+| Código | Pronto, 430 testes passando, na branch `feat/polymarket-desk` (PR #1 no GitHub) |
 | Agendador do Windows | **Ligado.** `PolymarketDesk` roda um ciclo a cada 10 min (paper); `PolymarketDeskMemes` roda as memecoins a cada 3 min (paper); `PolymarketDeskMonthly` roda todo dia e relata 1x por mês |
 | Modo paper | Rodando sozinho: cada ciclo varre ~1000 mercados, ~470 passam no filtro, o Claude analisa até 3. Ainda sem entradas (nenhuma distorção ≥ 8pp) e sem erros |
 | Economia | O robô paga para existir: aluguel diário (assinatura rateada) + US$0,01 por análise, saindo do caixa dele. Se não lucrar mais que isso, é **desligado** na linha de 40% |
@@ -32,7 +32,7 @@ Cada passo depende do anterior:
 
 1. **Telegram (C1).** Obrigatório: sem ele, o `memes-live-check` não libera o modo real. No modo real, um aviso de "compra incerta" ou "não conseguiu vender" exige que você confira a carteira.
 2. **Não deixar o PC dormir.** Hoje ele dorme depois de 3h parado, e dormindo o stop-loss não roda. Rode `powercfg /change standby-timeout-ac 0` (para desfazer, troque `0` por `180`). Deixe o PC na tomada, ligado e logado.
-3. **Paper provando que se paga (D8).** Pelo menos 2 semanas e 30 compras e vendas fechadas, com resultado positivo **depois** dos custos (`python -m desk memes-status` ou o painel). Se não passar, não ligue o real: o robô não tem vantagem e você descobriu de graça.
+3. **Paper provando que se paga (D8).** Pelo menos 2 semanas e 30 compras e vendas fechadas, com resultado positivo **depois** dos custos. O painel mostra isso no cartão "Pronto p/ dinheiro real?" (também no `memes-status` e no relatório mensal). Se não passar, não ligue o real: o robô não tem vantagem e você descobriu de graça.
 4. **Carteira Solana dedicada (C4).** Carteira nova, só com a banca, mais ~0,05 SOL para taxas. Chave no `.env`, nunca no chat.
 5. **`memes-live-check` dizendo "PRONTO".** Ele confere: modo, as duas travas, chave válida, saldo de SOL e de USDC, e o Telegram.
 6. **Virar a chave.** Em `config.toml`, na seção `[memes]`: `mode = "live"` e `bankroll_start_usd` igual ao USDC da carteira. Renomeie `state\memes.db` para `memes-paper.db`.
@@ -126,14 +126,15 @@ No modo real, esses custos são contábeis: saem do caixa do robô no registro, 
 
 ### D8. Memecoins: até onde deixar o agente ir
 O agente de memecoins (`[memes]` no `config.toml`) já compra e vende sozinho **em paper**. Como ele decide:
-1. **Descobre** os tokens novos que aparecem no DexScreener (os mesmos do fomo.family).
-2. **Filtros de mercado:** liquidez ≥ US$50 mil, de 1h a 72h de vida, volume e negócios na última hora, mais compra que venda, sem alta vertical, market cap entre US$150 mil e US$25 milhões.
-3. **Segurança (RugCheck):** sem poder de imprimir nem de congelar tokens, liquidez ≥ 80% travada, top 10 ≤ 30%, insiders ≤ 10%, criador ≤ 5%, sem taxa de transferência.
-4. **Cotação real (Jupiter):** comprar e vender de volta na hora não pode custar mais de 5%, e precisa existir rota de venda (pega "honeypot").
-5. **Claude (só veta):** busca na web e no X se o token é golpe, cópia ou propaganda paga. Na dúvida, veta. Ele nunca obriga uma compra.
-6. **Compra** 3% da banca (US$3 com US$100), no máximo 4 tokens ao mesmo tempo.
-7. **Vende** pelas regras: stop de -30%, metade ao dobrar, stop móvel de 30% abaixo do pico, liquidez caindo pela metade ou 24h no máximo.
-8. **Paga para existir:** cada checagem do Claude custa US$0,01 do caixa dele. Se cair 40% do pico, é **desligado**: para de comprar e de gastar, mas continua vendendo pelas regras.
+1. **Descobre** tokens no DexScreener (os mesmos do fomo.family) e nas listas da Jupiter (mais negociados, mais orgânicos, em alta).
+2. **Filtros de mercado:** liquidez ≥ US$50 mil, de 1h a 72h de vida, volume e negócios na última hora, mais compra que venda, sem alta vertical, market cap entre US$150 mil e US$25 milhões, e organic score da Jupiter ≥ 50 (pouco robô).
+3. **X, sem custo:** lê o post ou o perfil do X que o token divulga. Rejeita link apagado, post com pouco alcance (menos de 5 mil views e 50 likes) e perfil com menos de 100 seguidores. Os que passam são checados na ordem do maior alcance.
+4. **Segurança (RugCheck):** sem poder de imprimir nem de congelar tokens, liquidez ≥ 80% travada, top 10 ≤ 30%, insiders ≤ 10%, criador ≤ 5%, sem taxa de transferência.
+5. **Cotação real (Jupiter):** comprar e vender de volta na hora não pode custar mais de 5%, e precisa existir rota de venda (pega "honeypot").
+6. **Claude (só veta):** recebe os dados do X e busca na web e no X se o token é golpe, cópia, conta comprada ou propaganda paga. Veta quando acha sinal de alerta; falta de notícia sobre um token de poucas horas não é motivo. Ele nunca obriga uma compra.
+7. **Compra** 3% da banca (US$3 com US$100), no máximo 4 tokens ao mesmo tempo.
+8. **Vende** pelas regras: stop de -30%, metade ao dobrar, stop móvel de 30% abaixo do pico, liquidez caindo pela metade, 24h no máximo, ou na hora se o post/perfil do X do token for apagado.
+9. **Paga para existir:** cada checagem do Claude custa US$0,01 do caixa dele. Se cair 40% do pico, é **desligado**: para de comprar e de gastar, mas continua vendendo pelas regras.
 
 Suas escolhas:
 - **Só alertas (opção B):** `auto_trade = false`. Ele manda no Telegram os tokens aprovados e você compra à mão no fomo.family, se quiser.
