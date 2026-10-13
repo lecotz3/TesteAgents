@@ -365,3 +365,15 @@ def test_low_organic_score_from_jupiter_is_rejected(tmp_path, store):
 def test_jupiter_outage_does_not_stop_the_cycle(tmp_path, store):
     report = run_meme_cycle(deps(tmp_path, store, tokens=FakeTokens(fail=httpx.ConnectError("down"))))
     assert report.entries == 1 and report.errors  # DexScreener alone still works
+
+
+def test_safety_rejections_show_the_numbers_behind_them(tmp_path, store):
+    run_meme_cycle(deps(tmp_path, store, rug=FakeRug(default=make_safety(lp_locked_pct=57.0))))
+    [d] = store.recent_decisions(1)
+    assert d["decision"] == "lp_unlocked" and "LP travada 57%" in d["detail"]
+
+
+def test_bought_row_says_what_x_showed(tmp_path, store):
+    run_meme_cycle(deps(tmp_path, store, dex=FakeDex({MINT: make_pair(x_url=STATUS)}), x=FakeX(post=make_post())))
+    [d] = store.recent_decisions(1)
+    assert d["decision"] == "bought" and "@elonmusk" in d["detail"]

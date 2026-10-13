@@ -102,6 +102,12 @@ class MemeCycleReport:
         )
 
 
+def safety_detail(x: Safety) -> str:
+    risks = f" | riscos: {', '.join(x.danger_risks)}" if x.danger_risks else ""
+    return (f"LP travada {x.lp_locked_pct:.0f}% | top10 {x.top10_pct:.0f}% | insiders {x.insider_pct:.0f}% | "
+            f"criador {x.creator_pct:.0f}% | taxa {x.transfer_fee_pct:g}%{risks}")
+
+
 def fomo_link(mint: str) -> str:
     return f"https://fomo.family/tokens/solana/{mint}"
 
@@ -395,7 +401,7 @@ class _MemeCycle:
             return True
         reason = safety_rejection(safety, self.s)
         if reason:
-            self.reject(pair, reason)
+            self.reject(pair, reason, safety_detail(safety))
             return True
 
         size = position_size_usd(equity=self.report.equity, cash=self.store.cash(), s=self.s)
@@ -534,7 +540,7 @@ class _MemeCycle:
         self.store.open_position(pos, fill, self.now, f"ida e volta {loss:.1%}")
         self.prices[pair.mint] = pair.price_usd
         self.report.entries += 1
-        self.decide(pair, "bought", f"${fill.usd:.2f} a ${entry:.8g}")
+        self.decide(pair, "bought", f"${fill.usd:.2f} a ${entry:.8g}" + (f" | X: {describe_x(x, self.now)}" if x else ""))
         self.d.journal.append(format_note(
             f"COMPRA MEMECOIN [{self.mode.upper()}]",
             f"Token: {pair.name} ({pair.symbol}) {pair.mint}\n"
