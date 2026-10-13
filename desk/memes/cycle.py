@@ -38,7 +38,7 @@ class DexSource(Protocol):
 
 
 class SafetySource(Protocol):
-    def report(self, mint: str) -> Safety: ...
+    def report(self, mint: str, main_pool: str | None = None) -> Safety: ...
 
 
 class QuoteSource(Protocol):
@@ -388,7 +388,7 @@ class _MemeCycle:
         """Run the deep checks on one candidate. False means stop looking at more candidates this cycle."""
         self.report.checked += 1
         try:
-            safety = self.d.rugcheck.report(pair.mint)
+            safety = self.d.rugcheck.report(pair.mint, pair.pair_address or None)
         except FETCH_ERRORS as exc:
             self.error(f"RugCheck falhou para {pair.symbol}: {type(exc).__name__}")
             self.report.skips["rugcheck_unavailable"] += 1

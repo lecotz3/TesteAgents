@@ -110,7 +110,7 @@ class FakeRug:
         self.default = default or make_safety()
         self.calls: list[str] = []
 
-    def report(self, mint: str) -> Safety:
+    def report(self, mint: str, main_pool: str | None = None) -> Safety:
         self.calls.append(mint)
         return self.reports.get(mint, self.default)
 

@@ -22,6 +22,8 @@ DISCOVERY_FEEDS = (
 )
 BATCH = 30  # DexScreener's limit of addresses per /tokens call
 FETCH_ERRORS = (httpx.HTTPError, ValueError)
+# Concentrated-liquidity pools and order books: positions belong to individual LPs, no LP token exists to lock.
+NO_LP_TOKEN = ("clmm", "dlmm", "whirlpool", "orca", "manifest", "phoenix", "openbook")
 
 
 def _num(value, default: float = 0.0) -> float:
@@ -65,7 +67,23 @@ def parse_pair(raw: dict) -> Pair | None:
         return None
 
 
-def parse_safety(raw: dict) -> Safety:
+def _lp_locked_pct(markets: list[dict], main_pool: str | None) -> float:
+    """Lock of the pool the token trades on; otherwise liquidity-weighted over pools that have LP tokens."""
+    for market in markets:
+        lp = market.get("lp") or {}
+        if main_pool and market.get("pubkey") == main_pool and lp.get("lpLockedPct") is not None:
+            return min(max(_num(lp.get("lpLockedPct")), 0.0), 100.0)
+    with_tokens = [m for m in markets if not any(k in str(m.get("marketType") or "").lower() for k in NO_LP_TOKEN)]
+    locked = total = 0.0
+    for market in with_tokens or markets:
+        lp = market.get("lp") or {}
+        size = _num(lp.get("baseUSD")) + _num(lp.get("quoteUSD"))
+        total += size
+        locked += min(_num(lp.get("lpLockedUSD")), size)
+    return 100 * locked / total if total else 0.0
+
+
+def parse_safety(raw: dict, main_pool: str | None = None) -> Safety:
     token = raw.get("token") or {}
     supply = _num(token.get("supply")) or 0.0
     known = raw.get("knownAccounts") or {}
@@ -73,19 +91,13 @@ def parse_safety(raw: dict) -> Safety:
         addr for addr, info in known.items() if (info or {}).get("type") in ("AMM", "LOCKER")
     }
     whales = [h for h in raw.get("topHolders") or [] if h.get("owner") not in pools]
-    locked = total = 0.0
-    for market in raw.get("markets") or []:
-        lp = market.get("lp") or {}
-        size = _num(lp.get("baseUSD")) + _num(lp.get("quoteUSD"))
-        total += size
-        locked += min(_num(lp.get("lpLockedUSD")), size)
     insiders = sum(_num(n.get("currentHolding")) for n in raw.get("insiderNetworks") or [])
     return Safety(
         mint_authority=raw.get("mintAuthority") or token.get("mintAuthority"),
         freeze_authority=raw.get("freezeAuthority") or token.get("freezeAuthority"),
         rugged=bool(raw.get("rugged")),
         danger_risks=tuple(str(r.get("name")) for r in raw.get("risks") or [] if r.get("level") == "danger"),
-        lp_locked_pct=100 * locked / total if total else 0.0,
+        lp_locked_pct=_lp_locked_pct([m for m in raw.get("markets") or [] if isinstance(m, dict)], main_pool),
         top10_pct=sum(_num(h.get("pct")) for h in whales[:10]),
         insider_pct=100 * insiders / supply if supply else 0.0,
         creator_pct=100 * _num(raw.get("creatorBalance")) / supply if supply else 0.0,
@@ -182,10 +194,10 @@ class RugCheck:
         self._http = http
         self._base = base_url
 
-    def report(self, mint: str) -> Safety:
+    def report(self, mint: str, main_pool: str | None = None) -> Safety:
         resp = self._http.get(f"{self._base}/v1/tokens/{mint}/report")
         resp.raise_for_status()
-        return parse_safety(resp.json())
+        return parse_safety(resp.json(), main_pool)
 
 
 class Jupiter:

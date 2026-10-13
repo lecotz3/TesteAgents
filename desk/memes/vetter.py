@@ -55,7 +55,8 @@ class Vet:
 
     @property
     def approves(self) -> bool:
-        return self.verdict == "buy" and self.confidence != "low"
+        """Claude is a veto: it blocks on red flags. Confidence is kept for the journal, not used to block."""
+        return self.verdict == "buy"
 
     def as_dict(self) -> dict:
         return {"confidence": self.confidence, "red_flags": list(self.red_flags), "narrative": self.narrative,

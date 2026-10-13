@@ -25,12 +25,45 @@ def test_parse_pair_skips_unusable_records(broken):
     assert parse_pair(raw_pair(**broken)) is None
 
 
-def test_parse_safety_excludes_pool_from_top_holders_and_weights_lp_lock():
+def test_parse_safety_excludes_pool_from_top_holders():
     s = parse_safety(raw_rugcheck())
     assert s.top10_pct == pytest.approx(20.0)  # the AMM pool (30%) is liquidity, not a whale
-    assert s.lp_locked_pct == pytest.approx(100 * 107484 / (107484 + 2000))
     assert s.insider_pct == pytest.approx(3.0)
     assert s.decimals == 6 and s.mint_authority is None and s.danger_risks == ()
+
+
+def test_lp_lock_ignores_concentrated_liquidity_pools():
+    # DLMM/CLMM positions belong to individual LPs: there is no LP token to lock (seen on FLOYD and VEIL)
+    assert parse_safety(raw_rugcheck()).lp_locked_pct == pytest.approx(100.0)
+
+
+def test_lp_lock_of_the_main_pool_wins_even_with_stale_sizes():
+    raw = raw_rugcheck(markets=[
+        {"marketType": "pump_fun_amm", "pubkey": "MAIN", "lp": {"lpLockedPct": 100.0, "lpLockedUSD": 0.0,
+                                                               "baseUSD": 0.0, "quoteUSD": 0.0}},
+        {"marketType": "meteora_damm_v2", "pubkey": "DAMM", "lp": {"lpLockedPct": 0.0, "lpLockedUSD": 0.0,
+                                                                  "baseUSD": 40.0, "quoteUSD": 43.0}},
+    ])  # seen on HIRE: RugCheck had no size for the main pool
+    assert parse_safety(raw, main_pool="MAIN").lp_locked_pct == pytest.approx(100.0)
+    assert parse_safety(raw).lp_locked_pct == pytest.approx(0.0)  # without the main pool: weighted, conservative
+
+
+def test_lp_lock_weights_the_pools_with_lp_tokens():
+    raw = raw_rugcheck(markets=[
+        {"marketType": "pump_fun_amm", "pubkey": "A", "lp": {"lpLockedPct": 100.0, "lpLockedUSD": 60000.0,
+                                                            "baseUSD": 30000.0, "quoteUSD": 30000.0}},
+        {"marketType": "raydium_cpmm", "pubkey": "B", "lp": {"lpLockedPct": 0.0, "lpLockedUSD": 0.0,
+                                                            "baseUSD": 20000.0, "quoteUSD": 20000.0}},
+        {"marketType": "raydium_clmm", "pubkey": "C", "lp": {"lpLockedPct": 0.0, "lpLockedUSD": 0.0,
+                                                            "baseUSD": 500000.0, "quoteUSD": 500000.0}},
+    ])
+    assert parse_safety(raw).lp_locked_pct == pytest.approx(60.0)  # the dev can still pull the cpmm pool
+
+
+def test_only_concentrated_pools_fall_back_to_all_of_them():
+    raw = raw_rugcheck(markets=[{"marketType": "meteoraDlmm", "pubkey": "D", "lp": {
+        "lpLockedPct": 0.0, "lpLockedUSD": 0.0, "baseUSD": 5000.0, "quoteUSD": 5000.0}}])
+    assert parse_safety(raw).lp_locked_pct == pytest.approx(0.0)
 
 
 def test_parse_safety_collects_danger_risks():
@@ -79,6 +112,7 @@ def test_rugcheck_report_is_parsed():
     respx.get(f"{RUG}/v1/tokens/{MINT}/report").mock(return_value=httpx.Response(200, json=raw_rugcheck()))
     with httpx.Client() as http:
         assert RugCheck(http).report(MINT).decimals == 6
+        assert RugCheck(http).report(MINT, main_pool="HvYfFr8nm6bn9V93TDDMgqWwS2D2LsMn1Y3rDCToqeAB").lp_locked_pct == 100.0
 
 
 @respx.mock
