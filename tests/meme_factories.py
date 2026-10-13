@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from desk.memes.models import MemePosition, Pair, Quote, Safety
+from desk.memes.x import XPost, XProfile
 from tests.factories import NOW
 
 MINT = "3sKaoPryg4KrXubLWtoqF7MznLT7QNqKRxMMkkxTpump"
@@ -134,3 +135,31 @@ class FakeJupiter:
         else:
             out = amount / 10 ** self.decimals * price * 1e6 * (1 - self.leg_loss)
         return Quote(in_amount=amount, out_amount=int(out), price_impact_pct=self.impact, fee_bps=10)
+
+
+class FakeX:
+    def __init__(self, profile=None, post=None, raises=None):
+        self._profile, self._post, self.raises, self.calls = profile, post, raises, []
+
+    def profile(self, handle):
+        self.calls.append(handle)
+        if self.raises:
+            raise self.raises
+        return self._profile
+
+    def post(self, handle, post_id):
+        self.calls.append((handle, post_id))
+        if self.raises:
+            raise self.raises
+        return self._post
+
+
+def make_post(**o):
+    base = dict(id="1", author="elonmusk", author_followers=241_000_000, author_verified=True, text="meme",
+                created_at=NOW - timedelta(hours=2), likes=928, retweets=61, replies=188, quotes=13, views=36693)
+    return XPost(**{**base, **o})
+
+
+def make_profile(**o):
+    base = dict(handle="CealOnSol", followers=1, tweets=2, joined=NOW - timedelta(minutes=30), verified=False)
+    return XProfile(**{**base, **o})

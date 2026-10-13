@@ -19,6 +19,7 @@ from desk.memes.models import USDC_MINT
 from desk.memes.sources import FETCH_ERRORS, DexScreener, Jupiter, RugCheck, SolanaRpc
 from desk.memes.store import MemeStore
 from desk.memes.vetter import MemeVetter
+from desk.memes.x import FxTwitter
 from desk.notify import Notifier
 from desk.store import ModeMismatch
 
@@ -107,6 +108,7 @@ def cmd_memes_cycle(app: MemesApp) -> int:
                 settings=app.settings.memes, store=app.store, dex=DexScreener(app.http), rugcheck=RugCheck(app.http),
                 jupiter=Jupiter(app.http), vetter=make_vetter(app), executor=make_meme_executor(app),
                 journal=app.journal, notifier=app.notifier, now=utcnow,
+                x=FxTwitter(app.http, app.settings.memes.x_api_url) if app.settings.memes.x_enabled else None,
             )
         except ConfigError as exc:
             log.error("memes: configuração inválida: %s", exc)

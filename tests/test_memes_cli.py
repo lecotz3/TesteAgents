@@ -192,3 +192,17 @@ def test_live_check_requires_telegram(tmp_path, capsys):
         a.close()
     out = capsys.readouterr().out
     assert "Telegram" in out and "NÃO está pronto" in out
+
+
+@pytest.mark.parametrize("body,expected", [("", True), ("x_enabled = false\n", False)])
+def test_cycle_reads_x_through_fxtwitter_unless_switched_off(tmp_path, monkeypatch, body, expected):
+    from desk.memes.x import FxTwitter
+
+    seen = []
+    monkeypatch.setattr(memes_app, "run_meme_cycle", lambda deps: seen.append(deps) or MemeCycleReport())
+    a = memes_app.build_memes_app(write_config(tmp_path, body), tmp_path / ".env")
+    try:
+        assert memes_app.cmd_memes_cycle(a) == 0
+    finally:
+        a.close()
+    assert isinstance(seen[0].x, FxTwitter) is expected

@@ -188,6 +188,8 @@ const LABELS = {
   falling: ["Caindo", ""], market_cap_out_of_range: ["Market cap fora da faixa", ""],
   stop_loss: ["Stop-loss", "bad"], take_profit: ["Realizou lucro", "good"], trailing_stop: ["Stop móvel", ""],
   max_hold: ["Tempo máximo", ""], liquidity_drained: ["Liquidez sumindo", "bad"], missing_in_wallet: ["Sumiu da carteira", "bad"],
+  no_x_link: ["Sem link do X", ""], x_link_dead: ["Post/perfil do X apagado", "bad"], x_weak_narrative: ["Narrativa fraca no X", ""],
+  x_no_community: ["Perfil do X sem seguidores", ""], x_unavailable: ["X fora do ar", "warn"],
 };
 const ACTIONS = { BUY: "Compra", SELL: "Venda", SETTLE: "Liquidação" };
 const fomoLink = (mint, text) => el("a", { href: "https://fomo.family/tokens/solana/" + encodeURIComponent(mint),
@@ -427,7 +429,7 @@ function renderMemes(m) {
     const stat = (n, t) => el("div", { class: "stat" }, [el("div", { class: "n", text: String(n ?? 0) }), el("div", { class: "t", text: t })]);
     box.append(
       el("div", { class: "muted", text: `${fmtTime(c.ts)} (há ${Math.round(m.last_cycle_minutes_ago)} min)` }),
-      el("div", { class: "stats" }, [stat(c.discovered, "descobertos"), stat(c.candidates, "passaram no mercado"), stat(c.checked, "checados a fundo"),
+      el("div", { class: "stats" }, [stat(c.discovered, "descobertos"), stat(c.candidates, "passaram no mercado"), stat(c.x_checked, "olhados no X"), stat(c.checked, "checados a fundo"),
         stat(c.vetted, "pelo Claude"), stat(c.entries, "compras"), stat(c.exits, "vendas")]),
     );
     const skips = Object.entries(c.skips || {});

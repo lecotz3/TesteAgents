@@ -18,6 +18,7 @@ from desk.memes.rules import exit_decision, market_rejection, position_size_usd,
 from desk.memes.sources import FETCH_ERRORS
 from desk.memes.store import MemeStore
 from desk.memes.vetter import Vet
+from desk.memes.x import XSignal, XSource, XUnavailable, describe_x, narrative_strength, parse_x_link, x_rejection
 from desk.notify import Notifier
 
 log = logging.getLogger("desk")
@@ -45,7 +46,7 @@ class QuoteSource(Protocol):
 
 
 class VetSource(Protocol):
-    def vet(self, pair: Pair, safety: Safety, now: datetime) -> Vet: ...
+    def vet(self, pair: Pair, safety: Safety, now: datetime, x: XSignal | None = None) -> Vet: ...
 
 
 @dataclass
@@ -60,6 +61,7 @@ class MemeDeps:
     journal: Journal
     notifier: Notifier
     now: Callable[[], datetime]
+    x: XSource | None = None
 
 
 @dataclass
@@ -67,6 +69,7 @@ class MemeCycleReport:
     equity: float = 0.0
     discovered: int = 0
     candidates: int = 0
+    x_checked: int = 0
     checked: int = 0
     vetted: int = 0
     approved: int = 0
@@ -79,7 +82,7 @@ class MemeCycleReport:
     def as_dict(self) -> dict:
         return {
             "equity": self.equity, "discovered": self.discovered, "candidates": self.candidates,
-            "checked": self.checked, "vetted": self.vetted, "approved": self.approved, "entries": self.entries,
+            "x_checked": self.x_checked, "checked": self.checked, "vetted": self.vetted, "approved": self.approved, "entries": self.entries,
             "exits": self.exits, "halted": self.halted, "skips": dict(self.skips), "errors": list(self.errors),
         }
 
@@ -87,7 +90,7 @@ class MemeCycleReport:
         skips = ", ".join(f"{k}={v}" for k, v in sorted(self.skips.items())) or "-"
         return (
             f"equity=${self.equity:.2f} descobertos={self.discovered} candidatos={self.candidates} "
-            f"checados={self.checked} vetados={self.vetted} aprovados={self.approved} compras={self.entries} "
+            f"x={self.x_checked} checados={self.checked} vetados={self.vetted} aprovados={self.approved} compras={self.entries} "
             f"vendas={self.exits} parado={'sim' if self.halted else 'nao'} pulos[{skips}] erros={len(self.errors)}"
         )
 
@@ -324,11 +327,32 @@ class _MemeCycle:
                 candidates.append(pair)
         candidates.sort(key=lambda p: p.volume_h1_usd, reverse=True)
         self.report.candidates = len(candidates)
-        for pair in candidates[: self.s.max_candidates_checked]:
-            if not self.slots_left() or not self.consider(pair):
+        for pair, x in self.rank_by_x(candidates)[: self.s.max_candidates_checked]:
+            if not self.slots_left() or not self.consider(pair, x):
                 break
 
-    def consider(self, pair: Pair) -> bool:
+    def rank_by_x(self, candidates: list[Pair]) -> list[tuple[Pair, XSignal | None]]:
+        """Check what each token links to on X, drop the empty or dead claims, strongest narrative first."""
+        if not self.s.x_enabled or self.d.x is None:
+            return [(pair, None) for pair in candidates]
+        ranked = []
+        for pair in candidates[: self.s.max_candidates_checked * 2]:  # the pool by volume bounds the free calls
+            try:
+                x = XSignal.collect(parse_x_link(pair.x_url), self.d.x)
+            except XUnavailable as exc:
+                self.error(f"X indisponível para {pair.symbol}: {exc}")
+                self.report.skips["x_unavailable"] += 1  # no block: it is checked again next cycle
+                continue
+            self.report.x_checked += 1
+            reason = x_rejection(x, self.s)
+            if reason:
+                self.reject(pair, reason, describe_x(x, self.now))
+                continue
+            ranked.append((pair, x))
+        ranked.sort(key=lambda px: narrative_strength(px[1]), reverse=True)
+        return ranked
+
+    def consider(self, pair: Pair, x: XSignal | None = None) -> bool:
         """Run the deep checks on one candidate. False means stop looking at more candidates this cycle."""
         self.report.checked += 1
         try:
@@ -360,7 +384,7 @@ class _MemeCycle:
             if self.vet_calls >= self.s.max_vets_per_cycle:
                 self.report.skips["vet_cycle_cap"] += 1
                 return False  # the rest waits for the next cycle
-            vet = self.vet(pair, safety)
+            vet = self.vet(pair, safety, x)
             if vet is None:
                 return True
             if not vet.approves:
@@ -369,14 +393,14 @@ class _MemeCycle:
                             hours=self.s.vet_block_hours)
                 return True
         self.report.approved += 1
-        alert = self.approval_text(pair, safety, quote, vet)
+        alert = self.approval_text(pair, safety, quote, vet, x)
 
         if not self.s.auto_trade:
             self.d.notifier.send(f"Memecoin aprovada (só alerta, você decide): {alert}")
             self.decide(pair, "alerted", f"ida e volta {quote:.1%}")
             self.store.block_entry(pair.mint, self.now + timedelta(hours=24), "alertado")
             return True
-        return self.buy(pair, safety, size, quote, vet, alert)
+        return self.buy(pair, safety, size, quote, vet, alert, x)
 
     def check_quotes(self, pair: Pair, safety: Safety, size: float) -> float | None:
         """Round-trip cost of a buy of `size` sold right back, or None if the token must be skipped."""
@@ -402,14 +426,14 @@ class _MemeCycle:
             return None
         return loss
 
-    def vet(self, pair: Pair, safety: Safety) -> Vet | None:
+    def vet(self, pair: Pair, safety: Safety, x: XSignal | None) -> Vet | None:
         self.vet_calls += 1
         self.report.vetted += 1
         self.store.record_analyst_call(self.now)
         if self.s.cost_per_vet_usd > 0:
             self.store.charge(self.now, "vet", self.s.cost_per_vet_usd, pair.symbol)
         try:
-            vet = self.d.vetter.vet(pair, safety, self.now)
+            vet = self.d.vetter.vet(pair, safety, self.now, x)
         except AnalystError as exc:
             self.vet_failures += 1
             self.error(f"Claude falhou ao checar {pair.symbol}: {exc}")
@@ -430,15 +454,17 @@ class _MemeCycle:
                 "login ou timeout?). O agente não compra sem essa checagem; as vendas seguem. Veja state/desk.log."
             )
 
-    def approval_text(self, pair: Pair, safety: Safety, loss: float, vet: Vet | None) -> str:
+    def approval_text(self, pair: Pair, safety: Safety, loss: float, vet: Vet | None, x: XSignal | None) -> str:
         why = f" | Claude: {vet.narrative}" if vet else ""
+        why += f" | X: {describe_x(x, self.now)}" if x else ""
         return (
             f"{pair.symbol} ({pair.name}) | mcap {_usd(pair.market_cap_usd)} | liquidez {_usd(pair.liquidity_usd)} | "
             f"1h: volume {_usd(pair.volume_h1_usd)}, {pair.change_h1_pct:+.0f}% | idade {pair.age_minutes(self.now) / 60:.0f}h | "
             f"top10 {safety.top10_pct:.0f}% | ida e volta {loss:.1%}{why} | {fomo_link(pair.mint)} | {pair.url}"
         )
 
-    def buy(self, pair: Pair, safety: Safety, size: float, loss: float, vet: Vet | None, alert: str) -> bool:
+    def buy(self, pair: Pair, safety: Safety, size: float, loss: float, vet: Vet | None, alert: str,
+            x: XSignal | None = None) -> bool:
         try:
             problem = self.d.executor.funds_problem(size)
         except FETCH_ERRORS as exc:
@@ -486,6 +512,7 @@ class _MemeCycle:
             f"{_usd(pair.volume_h1_usd)}, {pair.buys_h1} compras / {pair.sells_h1} vendas, {pair.change_h1_pct:+.0f}%\n"
             f"Segurança: top10 {safety.top10_pct:.0f}% | insiders {safety.insider_pct:.0f}% | LP travada "
             f"{safety.lp_locked_pct:.0f}% | ida e volta {loss:.1%}\n"
+            + (f"X: {describe_x(x, self.now)}\n" if x else "")
             + (f"Claude: {vet.verdict} ({vet.confidence}) | {vet.narrative} | {vet.summary}\n" if vet else "")
             + f"Saídas: stop -{self.s.stop_loss_pct:.0f}%, metade em +{self.s.take_profit_pct:.0f}%, stop móvel "
             f"{self.s.trailing_stop_pct:.0f}% do pico, máximo {self.s.max_hold_hours:.0f}h\n"

@@ -13,7 +13,11 @@ from desk.memes.models import MemeFill
 from desk.memes.store import MemeStore
 from desk.memes.vetter import Vet
 from tests.factories import NOW, CapturingNotifier
-from tests.meme_factories import MINT, FakeDex, FakeJupiter, FakeRug, make_meme_position, make_pair, make_safety
+from desk.memes.x import XUnavailable
+from tests.meme_factories import (
+    MINT, FakeDex, FakeJupiter, FakeRug, FakeX, make_meme_position, make_pair, make_post, make_profile,
+    make_safety,
+)
 
 GOOD_VET = Vet("buy", "medium", (), "seal rescue meme", "organic community")
 
@@ -22,8 +26,9 @@ class FakeVetter:
     def __init__(self, vet=GOOD_VET, raises=None):
         self.result, self.raises, self.calls = vet, raises, []
 
-    def vet(self, pair, safety, now):
+    def vet(self, pair, safety, now, x=None):
         self.calls.append(pair.mint)
+        self.x_seen = x
         if self.raises:
             raise self.raises
         return self.result
@@ -37,13 +42,13 @@ def store(tmp_path):
 
 
 def deps(tmp_path, store, *, dex=None, rug=None, jup=None, vetter=None, executor=None, notifier=None, now=NOW,
-         **settings):
+         x=None, **settings):
     jup = jup or FakeJupiter()
     return MemeDeps(
         settings=MemesSettings(**settings), store=store, dex=dex or FakeDex({MINT: make_pair()}),
         rugcheck=rug or FakeRug(), jupiter=jup, vetter=FakeVetter() if vetter is None else vetter,
         executor=executor or PaperMemeExecutor(jup, network_fee_usd=0.002), journal=Journal(tmp_path / "memes.txt"),
-        notifier=notifier or CapturingNotifier(), now=lambda: now,
+        notifier=notifier or CapturingNotifier(), now=lambda: now, x=x,
     )
 
 
@@ -278,3 +283,60 @@ def test_claude_checks_per_cycle_are_capped_so_exits_are_never_starved(tmp_path,
     vetter = FakeVetter()
     report = run_meme_cycle(deps(tmp_path, store, dex=dex, vetter=vetter, max_vets_per_cycle=1))
     assert vetter.calls == [MINT] and report.entries == 1 and report.skips["vet_cycle_cap"] == 1
+
+
+STATUS = "https://x.com/elonmusk/status/1"
+OTHER = "B" * 44
+
+
+def test_x_narrative_is_checked_and_reaches_claude_the_journal_and_the_alert(tmp_path, store):
+    vetter, notifier = FakeVetter(), CapturingNotifier()
+    report = run_meme_cycle(deps(tmp_path, store, dex=FakeDex({MINT: make_pair(x_url=STATUS)}), x=FakeX(post=make_post()),
+                                 vetter=vetter, notifier=notifier))
+    assert report.entries == 1 and report.x_checked == 1
+    assert vetter.x_seen.post.views == 36693
+    assert "@elonmusk" in notifier.sent[0] and "36.7k views" in notifier.sent[0]
+    assert "X: post de @elonmusk" in (tmp_path / "memes.txt").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("x,url,reason", [
+    (FakeX(post=None), STATUS, "x_link_dead"),
+    (FakeX(post=make_post(views=300, likes=4)), STATUS, "x_weak_narrative"),
+    (FakeX(profile=make_profile(followers=3)), "https://x.com/CealOnSol", "x_no_community"),
+    (FakeX(), None, "no_x_link"),
+])
+def test_x_rules_reject_before_rugcheck(tmp_path, store, x, url, reason):
+    rug = FakeRug()
+    report = run_meme_cycle(deps(tmp_path, store, dex=FakeDex({MINT: make_pair(x_url=url)}), x=x, rug=rug))
+    assert report.entries == 0 and report.skips[reason] == 1 and rug.calls == []
+    [d] = store.recent_decisions(1)
+    assert d["decision"] == reason and MINT in store.blocked_ids(NOW + timedelta(hours=1))
+
+
+def test_stronger_narrative_is_checked_first(tmp_path, store):
+    dex = FakeDex({
+        MINT: make_pair(x_url="https://x.com/someone/status/1", volume_h1_usd=900_000.0),
+        OTHER: make_pair(mint=OTHER, symbol="OTHER", x_url="https://x.com/elonmusk/status/2", volume_h1_usd=60_000.0),
+    })
+
+    class TwoPosts(FakeX):
+        def post(self, handle, post_id):
+            self.calls.append((handle, post_id))
+            return make_post(views=8_000) if handle == "someone" else make_post(views=5_000_000)
+
+    rug = FakeRug()
+    run_meme_cycle(deps(tmp_path, store, dex=dex, x=TwoPosts(), rug=rug, max_candidates_checked=1))
+    assert rug.calls == [OTHER]  # less volume, far bigger narrative
+
+
+def test_x_outage_skips_without_blocking(tmp_path, store):
+    report = run_meme_cycle(deps(tmp_path, store, dex=FakeDex({MINT: make_pair(x_url=STATUS)}),
+                                 x=FakeX(raises=XUnavailable("HTTP 503"))))
+    assert report.entries == 0 and report.skips["x_unavailable"] == 1 and report.errors
+    assert MINT not in store.blocked_ids(NOW)
+
+
+def test_x_can_be_switched_off(tmp_path, store):
+    x = FakeX()
+    report = run_meme_cycle(deps(tmp_path, store, x=x, x_enabled=False))
+    assert report.entries == 1 and x.calls == []

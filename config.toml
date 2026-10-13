@@ -81,6 +81,13 @@ max_top10_holders_pct = 30
 max_insider_pct = 10
 max_creator_pct = 5
 
+# X (sem custo): o post ou o perfil que o token divulga, lido pela API pública do FxTwitter
+x_enabled = true
+x_require_link = true          # token sem link do X: pula (sem comunidade, sem narrativa)
+x_min_narrative_views = 5000   # o post da narrativa precisa destas views...
+x_min_narrative_likes = 50     # ...ou destes likes (posts antigos não mostram views)
+x_min_profile_followers = 100  # perfil próprio do token: mínimo de seguidores
+
 # Execução (Jupiter)
 position_pct = 0.03            # 3% da banca por token (US$3 com US$100)
 min_trade_usd = 1.0

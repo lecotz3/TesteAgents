@@ -8,7 +8,7 @@ from desk.config import MemesSettings
 from desk.memes.sources import parse_pair
 from desk.memes.x import FxTwitter, XLink, XPost, XProfile, XSignal, XUnavailable, describe_x, parse_x_link, x_rejection
 from tests.factories import NOW
-from tests.meme_factories import raw_pair
+from tests.meme_factories import FakeX, make_post, make_profile, raw_pair
 
 FX = "https://api.fxtwitter.com"
 S = MemesSettings()
@@ -80,34 +80,6 @@ def test_deleted_or_unknown_is_none_but_an_outage_raises():
         assert fx.profile("gone") is None and fx.post("elonmusk", "1") is None and fx.post("x", "9") is None
         with pytest.raises(XUnavailable):
             fx.profile("busy")
-
-
-class FakeX:
-    def __init__(self, profile=None, post=None, raises=None):
-        self._profile, self._post, self.raises, self.calls = profile, post, raises, []
-
-    def profile(self, handle):
-        self.calls.append(handle)
-        if self.raises:
-            raise self.raises
-        return self._profile
-
-    def post(self, handle, post_id):
-        self.calls.append((handle, post_id))
-        if self.raises:
-            raise self.raises
-        return self._post
-
-
-def make_post(**o):
-    base = dict(id="1", author="elonmusk", author_followers=241_000_000, author_verified=True, text="meme",
-                created_at=NOW - timedelta(hours=2), likes=928, retweets=61, replies=188, quotes=13, views=36693)
-    return XPost(**{**base, **o})
-
-
-def make_profile(**o):
-    base = dict(handle="CealOnSol", followers=1, tweets=2, joined=NOW - timedelta(minutes=30), verified=False)
-    return XProfile(**{**base, **o})
 
 
 def test_signal_from_a_status_link_reads_the_post():
