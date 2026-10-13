@@ -239,6 +239,13 @@ class _MemeCycle:
         except FETCH_ERRORS as exc:
             self.error(f"saldo indisponível para {pos.symbol}: {type(exc).__name__}")
             return
+        zero_key = f"zero_balance:{pos.id}"
+        if available <= 0 and self.store.get_meta(zero_key) is None:
+            self.store.set_meta(zero_key, self.now.isoformat())  # a lagging RPC can read zero once: confirm next cycle
+            self.error(f"{pos.symbol}: carteira com saldo zero; confirmo no próximo ciclo antes de dar baixa")
+            return
+        if available > 0 and self.store.get_meta(zero_key) is not None:
+            self.store.delete_meta(zero_key)  # the tokens are there after all: forget the earlier reading
         if available <= 0:
             self.store.write_off(pos, self.now, "missing_in_wallet")
             self.d.notifier.send(

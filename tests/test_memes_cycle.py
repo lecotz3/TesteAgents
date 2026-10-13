@@ -253,10 +253,23 @@ def test_tokens_gone_from_the_wallet_are_written_off(tmp_path, store):
     open_held(store)
     jup, notifier = FakeJupiter(prices={MINT: 0.0010}), CapturingNotifier()
     dex = FakeDex({MINT: make_pair(price_usd=0.0010, liquidity_usd=100_000.0)}, discovered=[])
-    run_meme_cycle(deps(tmp_path, store, dex=dex, jup=jup, executor=LiveLikeExecutor(jup, wallet_amount=0),
-                        notifier=notifier))
+    for minutes in (0, 3):  # one zero reading can be a lagging RPC: it must repeat before the write-off
+        run_meme_cycle(deps(tmp_path, store, dex=dex, jup=jup, executor=LiveLikeExecutor(jup, wallet_amount=0),
+                            notifier=notifier, now=NOW + timedelta(minutes=minutes)))
+        if minutes == 0:
+            assert len(store.open_positions()) == 1 and notifier.sent == []
     assert store.closed_positions()[0].close_reason == "missing_in_wallet"
     assert any("carteira" in m for m in notifier.sent)
+
+
+def test_a_single_zero_balance_reading_is_forgotten_when_the_tokens_show_up(tmp_path, store):
+    open_held(store)
+    jup = FakeJupiter(prices={MINT: 0.0010})
+    dex = FakeDex({MINT: make_pair(price_usd=0.0010, liquidity_usd=100_000.0)}, discovered=[])
+    run_meme_cycle(deps(tmp_path, store, dex=dex, jup=jup, executor=LiveLikeExecutor(jup, wallet_amount=0)))
+    run_meme_cycle(deps(tmp_path, store, dex=dex, jup=jup, executor=LiveLikeExecutor(jup, buy_raises=None),
+                        now=NOW + timedelta(minutes=3)))
+    assert store.closed_positions()[0].close_reason == "stop_loss"
 
 
 def test_claude_checks_per_cycle_are_capped_so_exits_are_never_starved(tmp_path, store):

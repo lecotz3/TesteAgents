@@ -101,6 +101,10 @@ class Ledger:
         with self._db:
             self._db.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (key, value))
 
+    def delete_meta(self, key: str) -> None:
+        with self._db:
+            self._db.execute("DELETE FROM meta WHERE key = ?", (key,))
+
     def cash(self) -> float:
         return float(self.get_meta("cash") or 0.0)
 
