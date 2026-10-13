@@ -112,6 +112,13 @@ class MemesSettings(BaseModel):
     max_hold_hours: float = Field(24.0, gt=0)
     liquidity_drain_pct: float = Field(50.0, gt=0, lt=100)
     reentry_cooldown_hours: float = Field(24.0, ge=0)
+    # X (free: the post or profile the token links to, read through the public FxTwitter API)
+    x_enabled: bool = True
+    x_require_link: bool = True  # no X link at all: skip (no community, no narrative)
+    x_min_narrative_views: int = Field(5000, ge=0)  # the linked post needs these views...
+    x_min_narrative_likes: int = Field(50, ge=0)  # ...or these likes (old posts have no view count)
+    x_min_profile_followers: int = Field(100, ge=0)  # the token's own X account
+    x_api_url: str = "https://api.fxtwitter.com"
     # the agent pays to exist
     analyst: Literal["claude", "none"] = "claude"
     cost_per_vet_usd: float = Field(0.01, ge=0)

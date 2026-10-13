@@ -30,6 +30,14 @@ def _num(value, default: float = 0.0) -> float:
         return default
 
 
+def _x_url(socials) -> str | None:
+    for social in socials if isinstance(socials, list) else []:
+        url = str((social or {}).get("url") or "")
+        if (social or {}).get("type") in ("twitter", "x") or "x.com/" in url or "twitter.com/" in url:
+            return url or None
+    return None
+
+
 def parse_pair(raw: dict) -> Pair | None:
     try:
         if raw.get("chainId") != "solana":
@@ -50,6 +58,7 @@ def parse_pair(raw: dict) -> Pair | None:
             change_h6_pct=_num(change.get("h6")),
             created_at=datetime.fromtimestamp(created / 1000, timezone.utc) if created else None,
             has_socials=bool(info.get("socials") or info.get("websites")), url=str(raw.get("url") or ""),
+            x_url=_x_url(info.get("socials")),
         )
     except (KeyError, TypeError, ValueError, AttributeError):
         return None
