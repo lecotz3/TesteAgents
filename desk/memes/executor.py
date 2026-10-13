@@ -10,7 +10,7 @@ import httpx
 from desk.config import ConfigError
 from desk.executor.base import ExecutionError, ExecutionUncertain
 from desk.memes.models import SOL_MINT, USDC_DECIMALS, USDC_MINT, MemeFill, Quote
-from desk.memes.sources import FETCH_ERRORS, Jupiter, SolanaRpc
+from desk.memes.sources import FETCH_ERRORS, TOKEN_PROGRAMS, Jupiter, SolanaRpc
 
 
 # Jupiter accepts the same signed transaction and requestId for 2 minutes to report its status, never executing it twice.
@@ -149,7 +149,7 @@ def load_wallet(private_key_b58: str) -> SoldersWallet:
 
 
 class LiveMemeExecutor:
-    """Real swaps through Jupiter Ultra: order with the wallet as taker, sign locally, execute."""
+    """Real swaps through Jupiter's order/execute flow: order with the wallet as taker, sign locally, execute."""
 
     mode = "live"
 
@@ -235,7 +235,8 @@ class LiveMemeExecutor:
         from solders.signature import Signature
         from solders.transaction import VersionedTransaction
 
-        empty = [a for a in self._rpc.empty_token_accounts(self.owner) if a[2] not in (USDC_MINT, SOL_MINT)][:limit]
+        empty = [a for a in self._rpc.empty_token_accounts(self.owner)
+                 if a[1] in TOKEN_PROGRAMS and a[2] not in (USDC_MINT, SOL_MINT)][:limit]  # never sign for another program
         if not empty:
             return 0
         owner = Pubkey.from_string(self.owner)

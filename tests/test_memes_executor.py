@@ -322,3 +322,12 @@ def test_live_order_rejected_by_jupiter_says_why():
     with httpx.Client() as http, pytest.raises(ExecutionError) as err:
         live(http).sell(MINT, 10)
     assert "400" in str(err.value) and "Invalid taker address" in str(err.value)
+
+
+@respx.mock
+def test_reclaim_rent_never_signs_for_a_program_other_than_the_token_programs():
+    # A dishonest RPC could report a foreign program as the account owner; the wallet must not sign for it.
+    respx.post(RPC).mock(side_effect=lambda req: httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {
+        "value": [token_account("A" * 43, MINT, 0, "Evi1Program11111111111111111111111111111111")]}}))
+    with httpx.Client() as http:
+        assert live(http).reclaim_rent() == 0
