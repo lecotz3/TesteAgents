@@ -74,6 +74,8 @@ O que isso significa: é um token de horas, em plena euforia. Quem o vê subindo
 | **B. Só alertas** | O robô filtra tokens que passam nos critérios de segurança e manda no Telegram; você decide e compra no fomo, à mão | O mais barato e seguro; não automatiza a compra |
 | **C. Dinheiro real já, ou automatizar o app fomo** | Não recomendo | Alta chance de perder a banca; risco de conta e de chave |
 
+> **Atualização (13/10/2026):** a opção **A** foi implementada, com a **B** embutida (`auto_trade = false` vira só alertas). Ela roda em paper a cada 3 minutos e tem o modo real pronto atrás de duas travas. Veja `docs/GUIA.md` (Memecoins) e `docs/PENDENCIAS.md` (D8 e C4).
+
 **Recomendação:** começar pela **B**, que fica pronta rápido e já mostra se os filtros acham algo que preste, e evoluir para a **A**. Nada de dinheiro real até o paper provar, com taxas e slippage realistas, que o robô se paga.
 
 ## Fontes

@@ -8,12 +8,13 @@ Tudo que eu (Claude) não posso fazer por você: credenciais, dinheiro e decisõ
 
 | Item | Estado |
 |---|---|
-| Código | Pronto, 227 testes passando, na branch `feat/polymarket-desk` (PR #1 no GitHub) |
+| Código | Pronto, 348 testes passando, na branch `feat/polymarket-desk` (PR #1 no GitHub) |
 | Agendador do Windows | **Ligado.** `PolymarketDesk` roda um ciclo a cada 10 min (paper); `PolymarketDeskMonthly` roda todo dia e relata 1x por mês |
 | Modo paper | Rodando sozinho: cada ciclo varre ~1000 mercados, ~470 passam no filtro, o Claude analisa até 3. Ainda sem entradas (nenhuma distorção ≥ 8pp) e sem erros |
 | Economia | O robô paga para existir: aluguel diário (assinatura rateada) + US$0,01 por análise, saindo do caixa dele. Se não lucrar mais que isso, é **desligado** na linha de 40% |
 | Painel | `scripts\dashboard.cmd` (duplo clique) ou `python -m desk dashboard` → http://127.0.0.1:8765 |
 | Modo real | **Bloqueado deste PC**: `python -m desk live-check` responde "Geobloqueio: BLOQUEADO (ConnectError)" porque esta rede não alcança `polymarket.com` |
+| Memecoins (Solana) | **Agente pronto em paper**: compra e vende sozinho com cotações reais da Jupiter, banca própria de US$100 (`state\memes.db`). Tarefa `PolymarketDeskMemes` a cada 3 min. Modo real pronto no código, travado até você criar a carteira (C4) |
 
 ---
 
@@ -23,6 +24,7 @@ Dê duplo clique em `scripts\dashboard.cmd`. Ele abre o painel no navegador, que
 - **Vida do robô:** equity, quanto ganhou operando, quanto custou existir, dias de fôlego até ser desligado e o gráfico contra a linha de desligamento.
 - **O que o robô decidiu:** cada mercado que o Claude analisou, com preço, valor justo, vantagem e o motivo de ter entrado ou pulado.
 - **Posições, trades e ciclos**, além do diário (`trades.txt`) e do log técnico.
+- **Memecoins (Solana)**, mais abaixo: banca, custo, queda até a linha de desligamento, posições (com link para o fomo.family), os tokens que ele checou a fundo e por que comprou ou não, compras e vendas.
 
 O painel só lê dados e fica acessível apenas neste computador. Para fechá-lo, feche a janela preta.
 
@@ -97,6 +99,22 @@ Minha recomendação: deixe como está no paper. É exatamente o teste que impor
 
 No modo real, esses custos são contábeis: saem do caixa do robô no registro, não da carteira.
 
+### D8. Memecoins: até onde deixar o agente ir
+O agente de memecoins (`[memes]` no `config.toml`) já compra e vende sozinho **em paper**. Como ele decide:
+1. **Descobre** os tokens novos que aparecem no DexScreener (os mesmos do fomo.family).
+2. **Filtros de mercado:** liquidez ≥ US$50 mil, de 1h a 72h de vida, volume e negócios na última hora, mais compra que venda, sem alta vertical, market cap entre US$150 mil e US$25 milhões.
+3. **Segurança (RugCheck):** sem poder de imprimir nem de congelar tokens, liquidez ≥ 80% travada, top 10 ≤ 30%, insiders ≤ 10%, criador ≤ 5%, sem taxa de transferência.
+4. **Cotação real (Jupiter):** comprar e vender de volta na hora não pode custar mais de 5%, e precisa existir rota de venda (pega "honeypot").
+5. **Claude (só veta):** busca na web e no X se o token é golpe, cópia ou propaganda paga. Na dúvida, veta. Ele nunca obriga uma compra.
+6. **Compra** 3% da banca (US$3 com US$100), no máximo 4 tokens ao mesmo tempo.
+7. **Vende** pelas regras: stop de -30%, metade ao dobrar, stop móvel de 30% abaixo do pico, liquidez caindo pela metade ou 24h no máximo.
+8. **Paga para existir:** cada checagem do Claude custa US$0,01 do caixa dele. Se cair 40% do pico, é **desligado**: para de comprar e de gastar, mas continua vendendo pelas regras.
+
+Suas escolhas:
+- **Só alertas (opção B):** `auto_trade = false`. Ele manda no Telegram os tokens aprovados e você compra à mão no fomo.family, se quiser.
+- **Uso do Claude:** até 30 checagens por dia e 2 por ciclo (`max_vets_per_day`, `max_vets_per_cycle`). No Claude Pro, deixe assim. `analyst = "none"` desliga o Claude e ele compra só pelas regras (não recomendo).
+- **Passar para o real:** exija pelo menos 2 semanas e 30 trades fechados em paper com resultado positivo **depois** dos custos (`python -m desk memes-status`). A maioria dos robôs de memecoin perde dinheiro; o paper existe para descobrir isso de graça.
+
 ## Credenciais (só quando decidir usar)
 
 ### C1. Avisos no celular pelo Telegram (opcional, recomendado)
@@ -142,6 +160,32 @@ Na VPS não há navegador para logar no Claude. No **seu PC**, rode `claude setu
 
 ---
 
+### C4. Carteira Solana para as memecoins (só depois da D8)
+1. **Carteira nova e dedicada:** instale a Phantom ou a Solflare e crie uma carteira **nova**, só para o agente. Nunca use a carteira onde estão seus outros fundos.
+2. **Fundos:** mande para ela só a banca das memecoins, em **USDC** na rede Solana (ex.: US$100), mais **~0,05 SOL** para as taxas da rede (cada operação custa centavos de centavo).
+3. **Chave privada (base58):**
+   - Phantom: *Configurações → Gerenciar contas → (a conta) → Mostrar chave privada*.
+   - Solflare: *Configurações → (a carteira) → Exportar chave privada*.
+
+   É um texto longo de letras e números. **Não é a frase de 12/24 palavras**: o agente não aceita a frase.
+4. Preencha o `.env` (nunca cole isso em chat):
+   ```
+   MEMES_PRIVATE_KEY=<chave base58>
+   MEMES_LIVE=I_UNDERSTAND
+   ```
+   **Opcional:** `MEMES_RPC_URL=` com um RPC gratuito da Helius ou QuickNode, mais estável que o RPC público.
+5. Instale o extra e valide:
+   ```powershell
+   uv sync --all-extras
+   .venv\Scripts\python -m desk memes-live-check
+   ```
+   Ele mostra o endereço público, o saldo de SOL e o de USDC, e precisa terminar com **"PRONTO para modo real nas memecoins."**
+6. Em `config.toml`, na seção `[memes]`: `mode = "live"` e `bankroll_start_usd` igual ao USDC na carteira.
+7. **Obrigatório:** renomeie `state\memes.db` para `state\memes-paper.db`. O agente se recusa a usar o registro do paper no modo real.
+8. Acompanhe as primeiras compras de perto. O código assina só a parte da carteira em cada transação da Jupiter e foi testado com transações simuladas, **nunca contra a rede de verdade**.
+
+Se uma compra ficar "incerta" (a resposta se perdeu), ele avisa no Telegram e não compra aquele token por 24h: confira a carteira. O agente **não tem função de saque**; tirar dinheiro da carteira é sempre com você.
+
 ## Comandos do dia a dia
 
 ```powershell
@@ -149,13 +193,17 @@ Na VPS não há navegador para logar no Claude. No **seu PC**, rode `claude setu
 .venv\Scripts\python -m desk cycle         # força um ciclo agora
 .venv\Scripts\python -m desk analyze <slug-ou-id>   # Claude analisa 1 mercado, sem operar
 .venv\Scripts\python -m desk resume        # retoma depois de parada por drawdown (leia o post-mortem antes)
-powershell -ExecutionPolicy Bypass -File scripts\uninstall_task.ps1   # desliga o agendador
+.venv\Scripts\python -m desk memes-status  # memecoins: banca, posições, últimos trades
+.venv\Scripts\python -m desk memes         # força um ciclo das memecoins agora
+.venv\Scripts\python -m desk memes-resume  # religa o agente de memecoins depois de desligado
+powershell -ExecutionPolicy Bypass -File scripts\uninstall_task.ps1   # desliga o agendador (as três tarefas)
 powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1     # liga de novo
 ```
 
-Registros: `state\trades.txt` (legível), `state\desk.log` (técnico), `state\desk.db` (banco).
+Registros: `state\trades.txt` e `state\memes.txt` (legíveis), `state\desk.log` (técnico), `state\desk.db` e `state\memes.db` (bancos).
 
 ## Avisos honestos
 - **Lucro não é garantido.** Os US$5.273 do guia original são marketing. O modo paper existe para provar (ou desmentir) a vantagem antes de arriscar dinheiro.
 - Mercado de previsão não é permitido em todo lugar. A responsabilidade legal é sua.
+- **Memecoins são o risco mais alto daqui:** a maioria vai a zero, golpes passam por qualquer filtro e o preço anda 30% em minutos. Confira também os termos da Jupiter e as regras do seu país. Só coloque o que aceita perder inteiro.
 - O PC precisa ficar ligado, logado e sem dormir para o agendador rodar (Configurações → Energia).

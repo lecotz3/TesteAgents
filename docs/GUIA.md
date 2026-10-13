@@ -117,6 +117,32 @@ Antes de cada ordem real o robô consulta o geobloqueio oficial; se a região es
 
 Todo mês, `python -m desk monthly` (agendado) diz se a banca cobre a assinatura (`subscription_cost_usd`) mais a reserva de US$50 e quanto dá para sacar. O saque é sempre manual.
 
+## Memecoins (Solana)
+
+Segundo agente, com banca, registro e diário próprios (`state\memes.db`, `state\memes.txt`) e a mesma lógica de "pagar para existir". Configuração na seção `[memes]` do `config.toml`.
+
+| Etapa | Quem decide | O que acontece |
+|---|---|---|
+| Descoberta | DexScreener | Tokens que acabaram de comprar perfil, de pagar destaque ou de ser assumidos pela comunidade |
+| Filtro de mercado | Código | Liquidez, idade (1h a 72h), volume e negócios na última hora, pressão de compra, sem alta vertical, market cap |
+| Segurança | Código + RugCheck | Sem poder de imprimir ou congelar, liquidez travada, holders espalhados, sem taxa de transferência |
+| Custo real | Código + Jupiter | Ida e volta ≤ 5%, impacto ≤ 2%, existe rota de venda, preço da cotação bate com o DexScreener |
+| Reputação | Claude (só veta) | Busca o token pelo endereço na web e no X: golpe, cópia, imitação, propaganda paga |
+| Compra | Código | 3% da banca, até 4 tokens ao mesmo tempo |
+| Venda | Código | Stop -30%, metade ao dobrar, stop móvel de 30% do pico, liquidez caindo pela metade, 24h no máximo |
+
+```powershell
+.venv\Scripts\python -m desk memes             # um ciclo agora
+.venv\Scripts\python -m desk memes-status      # banca, posições, trades
+.venv\Scripts\python -m desk memes-live-check  # confere carteira e saldos do modo real (não negocia)
+.venv\Scripts\python -m desk memes-resume      # religa depois de desligado
+```
+
+- **Paper:** cada compra e venda simulada usa a cotação exata que a Jupiter executaria naquele instante, mais uma estimativa da taxa da rede.
+- **Real:** fica atrás de duas travas: `[memes] mode = "live"` e `MEMES_LIVE=I_UNDERSTAND`. A chave da carteira dedicada (`MEMES_PRIVATE_KEY`) só assina a parte dela em cada transação, nunca é registrada no log e nunca chega ao Claude. Passo a passo: `docs/PENDENCIAS.md`, C4.
+- **Só alertas:** `auto_trade = false`. Ele manda os tokens aprovados no Telegram, com link do fomo.family, e você decide.
+- **Paga para existir:** cada checagem do Claude custa US$0,01. Caiu 40% do pico, é desligado: para de comprar e de gastar, mas segue vendendo pelas regras.
+
 ## Regras para lembrar
 
 - Nunca cole chave privada, seed ou senha em chat. Chaves só no `.env`.
