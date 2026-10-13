@@ -101,6 +101,7 @@ class _Cycle:
 
     def run(self) -> CycleReport:
         self.settle_resolved()
+        self.pay_rent()
         self.mark_to_market()
         self.check_drawdown()
         self.manage_exits()
@@ -132,8 +133,32 @@ class _Cycle:
             self.books[token_id] = self.d.books.get_book(token_id)
         return self.books[token_id]
 
+    def pay_rent(self) -> None:
+        """One day of rent (the subscription, pro rata) the first time the desk runs each UTC day."""
+        today = self.now.date().isoformat()
+        if self.store.get_meta("rent_day") == today:
+            return
+        self.store.set_meta("rent_day", today)
+        if self.store.is_halted():
+            return  # a switched-off desk does not pay rent
+        if self.s.daily_rent > 0:
+            self.store.charge(self.now, "rent", self.s.daily_rent, f"aluguel {today}")
+
+    def within_budget(self) -> bool:
+        cost = self.s.economy.cost_per_analysis_usd
+        if cost <= 0:
+            return True
+        budget = self.s.economy.max_daily_burn_pct * max(self.report.equity, 0.0)
+        return self.store.costs_since(self.now - timedelta(hours=24)) + cost <= budget + 1e-9
+
     def analyst_available(self) -> bool:
         if self.analyst_failures >= MAX_ANALYST_FAILURES_PER_CYCLE or self.cap_reached:
+            return False
+        if self.store.is_halted():
+            return False  # switched off: it stops spending; exits run on the last analysis
+        if not self.within_budget():
+            self.cap_reached = True
+            self.report.skips["daily_budget"] += 1
             return False
         used = self.store.analyst_calls_since(self.now - timedelta(hours=24))
         if used >= self.s.analysis.max_analyses_per_day:
@@ -156,6 +181,8 @@ class _Cycle:
     def analyze(self, market: Market) -> Analysis | None:
         self.analyst_calls += 1
         self.store.record_analyst_call(self.now)
+        if self.s.economy.cost_per_analysis_usd > 0:
+            self.store.charge(self.now, "analysis", self.s.economy.cost_per_analysis_usd, market.slug)
         try:
             analysis = self.d.analyst.estimate(market, self.now)
         except AnalystError as exc:
@@ -229,6 +256,8 @@ class _Cycle:
             return
         self.store.set_halted(True)
         summary = self.trade_summary()
+        if self.s.economy.cost_per_analysis_usd > 0:
+            self.store.charge(self.now, "postmortem", self.s.economy.cost_per_analysis_usd, "post-mortem")
         try:
             text = self.d.analyst.postmortem(summary)
         except AnalystError as exc:
@@ -239,8 +268,9 @@ class _Cycle:
             self.now,
         ))
         self.d.notifier.send(
-            f"Desk PARADO: drawdown {drawdown:.0%} (pico ${peak:.2f}, equity ${equity:.2f}). "
-            "Leia o post-mortem em trades.txt e rode 'python -m desk resume' para retomar."
+            f"Desk DESLIGADO: não se pagou. A banca caiu {drawdown:.0%} desde o pico (pico ${peak:.2f}, "
+            f"equity ${equity:.2f}; custos de operação até aqui ${self.store.total_costs():.2f}). "
+            "Ele parou de operar e de gastar. Leia o post-mortem em trades.txt; para religar: python -m desk resume"
         )
 
     def trade_summary(self) -> str:

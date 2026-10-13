@@ -19,6 +19,7 @@ from desk.config import ConfigError, Secrets, Settings, load_secrets, load_setti
 from desk.cycle import Deps, run_cycle
 from desk.executor import LIVE_CONFIRMATION, make_executor
 from desk.executor.base import ExecutionError
+from desk.economy import economics
 from desk.executor.sdk import SdkTrader
 from desk.gamma import GammaClient
 from desk.geoblock import check_geoblock
@@ -135,6 +136,11 @@ def cmd_status(app: App) -> int:
     drawdown = (peak - equity) / peak if peak > 0 else 0.0
     print(f"Modo: {s.mode} | Analista: {s.analysis.analyst} | Parado: {'SIM' if store.is_halted() else 'não'}")
     print(f"Equity: ${equity:.2f} | Caixa: ${store.cash():.2f} | Pico: ${peak:.2f} | Drawdown: {drawdown:.1%}")
+    e = economics(store, s, utcnow())
+    runway = f"{e.runway_days:.0f} dias" if e.runway_days is not None else "sem gasto recente"
+    print(f"Custos de operação: ${e.costs_total:.2f} (24h: ${e.costs_24h:.2f} de ${e.budget_24h:.2f} permitidos) | "
+          f"Resultado de trading: ${e.trading_pnl:+.2f} | Líquido: ${e.net:+.2f}")
+    print(f"Linha de desligamento: ${e.shutdown_line:.2f} | Fôlego sem lucro: {runway}")
     positions = store.open_positions()
     print(f"Posições abertas ({len(positions)}/{s.risk.max_open_positions}):")
     for p in positions:
@@ -156,13 +162,21 @@ def cmd_monthly(app: App, force: bool = False, now: datetime | None = None) -> i
     equity, cash = _equity(app), app.store.cash()
     target = m.subscription_cost_usd + m.monthly_reserve_usd
     tag = "[PAPER] " if app.settings.mode == "paper" else ""
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    before = app.store.equity_before(month_start)
+    start_equity = before if before is not None else app.settings.bankroll_start_usd
+    month_costs = app.store.costs_since(month_start)
+    month_net = equity - start_equity
+    verdict = "se pagou" if month_net >= 0 else "não se pagou"
+    economy = (f"No mês: trading ${month_net + month_costs:+.2f}, custos ${month_costs:.2f}, "
+               f"líquido ${month_net:+.2f}: {verdict}. ")
     if equity >= target:
         max_withdraw = max(0.0, min(cash, equity - m.monthly_reserve_usd))
-        message = (f"{tag}Relatório mensal {month}: equity ${equity:.2f}. Cobre a assinatura. "
+        message = (f"{tag}Relatório mensal {month}: equity ${equity:.2f}. {economy}Cobre a assinatura. "
                    f"Saque sugerido: ${m.subscription_cost_usd:.2f} (máximo mantendo a reserva de "
                    f"${m.monthly_reserve_usd:.2f}: ${max_withdraw:.2f}). O saque é manual.")
     else:
-        message = (f"{tag}Relatório mensal {month}: equity ${equity:.2f}. Faltam ${target - equity:.2f} para cobrir "
+        message = (f"{tag}Relatório mensal {month}: equity ${equity:.2f}. {economy}Faltam ${target - equity:.2f} para cobrir "
                    f"assinatura (${m.subscription_cost_usd:.2f}) + reserva (${m.monthly_reserve_usd:.2f}). Nada a sacar.")
     app.journal.append(format_note("RELATÓRIO MENSAL", message, now))
     app.notifier.send(message)

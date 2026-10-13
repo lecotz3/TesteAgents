@@ -139,3 +139,19 @@ def test_crash_while_building_the_cycle_is_counted(app, monkeypatch):
     monkeypatch.setattr(cli, "make_executor", broken_executor)
     assert cli.cmd_cycle(app) == 2
     assert app.store.consecutive_failures() == 1
+
+
+def test_status_shows_what_the_desk_cost_and_earned(app, capsys):
+    app.store.charge(NOW, "rent", 0.67, "aluguel")
+    app.store.record_equity(NOW, 99.33, 99.33, 0.0)
+    cli.cmd_status(app)
+    out = capsys.readouterr().out
+    assert "Custos de operação: $0.67" in out
+    assert "Resultado de trading: $+0.00" in out and "Líquido: $-0.67" in out
+
+
+def test_monthly_report_says_whether_it_paid_for_itself(app):
+    app.store.charge(NOW, "rent", 20.0, "aluguel do mês")
+    app.store.record_equity(NOW, 80.0, 80.0, 0.0)
+    cli.cmd_monthly(app, now=NOW)
+    assert "custos $20.00" in app.notifier.sent[0] and "não se pagou" in app.notifier.sent[0]

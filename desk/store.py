@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS analyses (
 CREATE TABLE IF NOT EXISTS analysis_failures (market_id TEXT PRIMARY KEY, failed_at TEXT NOT NULL, error TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS equity (ts TEXT NOT NULL, equity REAL NOT NULL, cash REAL NOT NULL, positions_value REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS analyst_calls (ts TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS costs (ts TEXT NOT NULL, kind TEXT NOT NULL, amount REAL NOT NULL, detail TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS cycles (id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, payload TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS decisions (
     id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, market_id TEXT NOT NULL, slug TEXT NOT NULL,
@@ -143,6 +144,10 @@ class Store:
     def equity_history(self, since: datetime) -> list[tuple[datetime, float]]:
         rows = self._db.execute("SELECT ts, equity FROM equity WHERE ts >= ? ORDER BY rowid", (_iso(since),)).fetchall()
         return [(_dt(r["ts"]), float(r["equity"])) for r in rows]
+
+    def equity_before(self, ts: datetime) -> float | None:
+        row = self._db.execute("SELECT equity FROM equity WHERE ts < ? ORDER BY rowid DESC LIMIT 1", (_iso(ts),)).fetchone()
+        return float(row["equity"]) if row else None
 
     def last_equity(self) -> float | None:
         row = self._db.execute("SELECT equity FROM equity ORDER BY rowid DESC LIMIT 1").fetchone()
@@ -306,3 +311,18 @@ class Store:
     def recent_decisions(self, limit: int) -> list[dict]:
         rows = self._db.execute("SELECT * FROM decisions ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
         return [{**{k: r[k] for k in self.DECISION_FIELDS}, "ts": _dt(r["ts"])} for r in rows]
+
+    # --- operating costs (the desk pays to exist) ----------------------------
+    def charge(self, ts: datetime, kind: str, amount: float, detail: str) -> None:
+        """Debit an operating cost from cash and keep the receipt, atomically."""
+        with self._db:
+            self._db.execute("INSERT INTO costs (ts, kind, amount, detail) VALUES (?, ?, ?, ?)",
+                             (_iso(ts), kind, amount, detail[:200]))
+            self._db.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('cash', ?)", (repr(self.cash() - amount),))
+
+    def costs_since(self, cutoff: datetime) -> float:
+        row = self._db.execute("SELECT COALESCE(SUM(amount), 0) FROM costs WHERE ts >= ?", (_iso(cutoff),)).fetchone()
+        return float(row[0])
+
+    def total_costs(self) -> float:
+        return float(self._db.execute("SELECT COALESCE(SUM(amount), 0) FROM costs").fetchone()[0])

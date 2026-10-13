@@ -59,6 +59,14 @@ class ExitSettings(BaseModel):
     reentry_cooldown_hours: float = Field(6.0, ge=0)  # no buying back a market right after selling it
 
 
+class EconomySettings(BaseModel):
+    """The desk pays to exist: rent every day and a fee per analyst call, out of its own cash."""
+
+    daily_rent_usd: float | None = Field(None, ge=0)  # None = monthly.subscription_cost_usd / 30
+    cost_per_analysis_usd: float = Field(0.01, ge=0)
+    max_daily_burn_pct: float = Field(0.015, gt=0, le=1)  # rent + analyses in 24h, as a share of equity
+
+
 class MonthlySettings(BaseModel):
     subscription_cost_usd: float = Field(20.0, ge=0)
     monthly_reserve_usd: float = Field(50.0, ge=0)
@@ -73,6 +81,12 @@ class Settings(BaseModel):
     risk: RiskSettings = Field(default_factory=RiskSettings)
     exits: ExitSettings = Field(default_factory=ExitSettings)
     monthly: MonthlySettings = Field(default_factory=MonthlySettings)
+    economy: EconomySettings = Field(default_factory=EconomySettings)
+
+    @property
+    def daily_rent(self) -> float:
+        rent = self.economy.daily_rent_usd
+        return self.monthly.subscription_cost_usd / 30 if rent is None else rent
 
     @model_validator(mode="after")
     def _no_codex_with_money(self) -> "Settings":

@@ -146,3 +146,11 @@ def test_readonly_store_reads_but_cannot_write(tmp_path):
             ro.adjust_cash(1.0)
     finally:
         ro.close()
+
+
+def test_charge_debits_cash_and_is_recorded(store):
+    store.charge(NOW, "rent", 0.67, "aluguel do dia")
+    store.charge(NOW + timedelta(hours=1), "analysis", 0.01, "fed")
+    assert store.cash() == pytest.approx(100 - 0.68)
+    assert store.total_costs() == pytest.approx(0.68)
+    assert store.costs_since(NOW + timedelta(minutes=30)) == pytest.approx(0.01)

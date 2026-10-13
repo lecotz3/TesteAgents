@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from desk.analyst.base import AnalystError
-from desk.config import AnalysisSettings, Settings
+from desk.config import AnalysisSettings, EconomySettings, Settings
 from desk.cycle import Deps, run_cycle
 from desk.executor.base import ExecutionUncertain
 from desk.executor.paper import PaperExecutor
@@ -81,9 +81,13 @@ def env(tmp_path):
     store.close()
 
 
+# Most tests check trading logic, so the harness runs a desk that pays nothing to exist; the economy tests opt in.
+FREE = Settings(economy=EconomySettings(daily_rent_usd=0.0, cost_per_analysis_usd=0.0))
+
+
 def make_deps(tmp_path, store, markets, books, analyst, settings=None):
     return Deps(
-        settings=settings or Settings(),
+        settings=settings or FREE,
         store=store,
         markets=FakeMarkets(markets),
         books=FakeBooks(books),
@@ -158,7 +162,7 @@ def test_drawdown_of_40pct_halts_and_blocks_entries(env):
     assert report.halted and store.is_halted()
     assert report.entries == 0
     assert analyst.postmortems
-    assert any("PARADO" in s for s in deps.notifier.sent)
+    assert any("DESLIGADO" in s for s in deps.notifier.sent)
     assert "POST-MORTEM" in (tmp_path / "trades.txt").read_text(encoding="utf-8")
 
 
@@ -405,3 +409,59 @@ def test_cycle_is_recorded_with_its_decisions(env):
     assert by_slug["buy-me"]["decision"] == "entered" and by_slug["buy-me"]["question"] == "Will it rain?"
     assert by_slug["buy-me"]["fair_prob"] == pytest.approx(0.74) and by_slug["buy-me"]["price"] == pytest.approx(0.62)
     assert by_slug["flat"]["decision"] == "prefilter_no_edge"
+
+
+# --- economy: the desk pays for every action and is shut down if it does not earn it back ---------
+
+PAYING = Settings(economy=EconomySettings(daily_rent_usd=0.5, cost_per_analysis_usd=0.1, max_daily_burn_pct=0.05))
+
+
+def test_rent_and_each_analysis_are_paid_from_cash(env):
+    tmp_path, store = env
+    m = make_market()
+    run_cycle(make_deps(tmp_path, store, [m], {}, FakeAnalyst({m.id: 0.62}), PAYING))
+    assert store.cash() == pytest.approx(100 - 0.5 - 0.1)
+    assert store.total_costs() == pytest.approx(0.6)
+
+
+def test_rent_is_charged_once_per_day(env):
+    tmp_path, store = env
+    deps = make_deps(tmp_path, store, [], {}, FakeAnalyst(), PAYING)
+    run_cycle(deps)
+    deps.now = lambda: NOW + timedelta(minutes=10)
+    run_cycle(deps)
+    assert store.total_costs() == pytest.approx(0.5)
+    deps.now = lambda: NOW + timedelta(days=1)
+    run_cycle(deps)
+    assert store.total_costs() == pytest.approx(1.0)
+
+
+def test_daily_budget_limits_how_much_it_thinks(env):
+    tmp_path, store = env
+    markets = ten_markets()
+    analyst = FakeAnalyst({m.id: 0.62 for m in markets})
+    tight = Settings(economy=EconomySettings(daily_rent_usd=0.5, cost_per_analysis_usd=0.5, max_daily_burn_pct=0.02))
+    report = run_cycle(make_deps(tmp_path, store, markets, {}, analyst, tight))
+    assert len(analyst.calls) == 2  # $2/day budget: $0.50 rent + 2 x $0.50; a third call would overspend
+    assert report.skips["daily_budget"] == 1
+
+
+def test_shut_down_desk_stops_spending(env):
+    tmp_path, store = env
+    m = make_market()
+    open_position(store)
+    store.save_analysis(make_analysis(created_at=NOW - timedelta(hours=2)))  # stale: would normally be redone
+    store.set_halted(True)
+    analyst = FakeAnalyst({m.id: 0.74})
+    run_cycle(make_deps(tmp_path, store, [m], books_for(m), analyst, PAYING))
+    assert analyst.calls == []
+    assert store.total_costs() == 0.0
+
+
+def test_costs_alone_can_shut_the_desk_down(env):
+    tmp_path, store = env
+    store.charge(NOW - timedelta(days=1), "analysis", 41.0, "meses de análises sem lucro")
+    deps = make_deps(tmp_path, store, [], {}, FakeAnalyst(), PAYING)
+    report = run_cycle(deps)
+    assert report.halted
+    assert any("DESLIGADO" in msg for msg in deps.notifier.sent)

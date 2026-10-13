@@ -38,6 +38,12 @@ exit_fair_change_pp = 5.0
 exit_hours_before_resolution = 1.0
 reentry_cooldown_hours = 6.0   # depois de vender, não recompra o mesmo mercado por 6h (evita girar taxa)
 
+[economy]
+# O robô paga para existir: se não ganhar mais do que gasta, a banca cai até a linha de 40% e ele é DESLIGADO.
+# daily_rent_usd = 0.67        # aluguel diário; comentado = subscription_cost_usd / 30 (assinatura rateada)
+cost_per_analysis_usd = 0.01   # cada chamada ao analista (cada "pensamento") sai do caixa
+max_daily_burn_pct = 0.015     # gasto máximo em 24h (aluguel + análises) como % da equity: com US$100, US$1,50/dia
+
 [monthly]
 subscription_cost_usd = 20.0
 monthly_reserve_usd = 50.0
