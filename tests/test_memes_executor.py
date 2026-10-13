@@ -314,3 +314,11 @@ def test_reclaim_rent_with_nothing_to_close_sends_nothing():
 
 def test_paper_has_no_rent_to_reclaim():
     assert PaperMemeExecutor(None, network_fee_usd=0.0).reclaim_rent() == 0
+
+
+@respx.mock
+def test_live_order_rejected_by_jupiter_says_why():
+    respx.get(JUP + "/swap/v2/order").mock(return_value=httpx.Response(400, json={"error": "Invalid taker address"}))
+    with httpx.Client() as http, pytest.raises(ExecutionError) as err:
+        live(http).sell(MINT, 10)
+    assert "400" in str(err.value) and "Invalid taker address" in str(err.value)

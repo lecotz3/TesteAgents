@@ -5,6 +5,8 @@ import base64
 import time
 from typing import Callable, Protocol
 
+import httpx
+
 from desk.config import ConfigError
 from desk.executor.base import ExecutionError, ExecutionUncertain
 from desk.memes.models import SOL_MINT, USDC_DECIMALS, USDC_MINT, MemeFill, Quote
@@ -24,6 +26,13 @@ def check_floor(out_amount: int, min_out: int, fee_bps: float, gasless: bool = F
     if min_out and out_amount < min_out:
         kind = "gasless, " if gasless else ""
         raise PriceMoved(f"ordem {1 - out_amount / min_out:.1%} abaixo do mínimo aprovado ({kind}taxa de {fee_bps / 100:.1f}%)")
+
+
+def fetch_detail(exc: Exception) -> str:
+    """The error type, plus the HTTP status and the start of the body when the server explained itself."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"HTTP {exc.response.status_code}: {exc.response.text[:200].strip()}"
+    return type(exc).__name__
 
 
 def usdc_raw(usd: float) -> int:
@@ -63,7 +72,7 @@ class PaperMemeExecutor:
         try:
             quote = self._jup.quote(input_mint, output_mint, amount)
         except FETCH_ERRORS as exc:
-            raise ExecutionError(f"cotação indisponível: {type(exc).__name__}") from exc
+            raise ExecutionError(f"cotação indisponível: {fetch_detail(exc)}") from exc
         if quote is None:
             raise ExecutionError("Jupiter não encontrou rota")
         return quote
@@ -157,7 +166,7 @@ class LiveMemeExecutor:
         try:
             order = self._jup.order(input_mint, output_mint, amount, taker=self.owner)
         except FETCH_ERRORS as exc:
-            raise ExecutionError(f"ordem indisponível: {type(exc).__name__}") from exc
+            raise ExecutionError(f"ordem indisponível: {fetch_detail(exc)}") from exc
         if not order.get("transaction") or not order.get("requestId"):
             reason = order.get("errorMessage") or order.get("error") or "?"
             raise ExecutionError(f"Jupiter não montou a transação: {reason}")
