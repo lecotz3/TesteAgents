@@ -208,12 +208,13 @@ Na VPS não há navegador para logar no Claude. No **seu PC**, rode `claude setu
    MEMES_LIVE=I_UNDERSTAND
    ```
    **Opcional:** `MEMES_RPC_URL=` com um RPC gratuito da Helius ou QuickNode, mais estável que o RPC público.
+   **Opcional:** `MEMES_JUPITER_API_KEY=` com uma chave grátis da Jupiter ([developers.jup.ag/portal](https://developers.jup.ag/portal)). Sem ela o agente funciona, mas a Jupiter só aceita 1 chamada a cada 2 segundos; com ela, 1 por segundo.
 5. Instale o extra e valide:
    ```powershell
    uv sync --all-extras
    .venv\Scripts\python -m desk memes-live-check
    ```
-   Ele mostra o endereço público e os saldos de SOL e de USDC, confere se o Telegram está configurado e precisa terminar com **"PRONTO para modo real nas memecoins."**
+   Ele mostra o endereço público e os saldos de SOL e de USDC e confere se o Telegram está configurado. Também pede à Jupiter uma troca de verdade de US$1 USDC → SOL para a sua carteira e a assina localmente, **sem enviar**: prova que a chave e a Jupiter funcionam sem gastar nada. Precisa terminar com **"PRONTO para modo real nas memecoins."**
 6. Em `config.toml`, na seção `[memes]`: `mode = "live"` e `bankroll_start_usd` igual ao USDC na carteira.
 7. **Obrigatório:** renomeie `state\memes.db` para `state\memes-paper.db`. O agente se recusa a usar o registro do paper no modo real.
 8. Acompanhe as primeiras compras de perto. O código assina só a parte da carteira em cada transação da Jupiter e foi testado com transações simuladas, **nunca contra a rede de verdade**.

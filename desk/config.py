@@ -88,6 +88,7 @@ class MemesSettings(BaseModel):
     max_market_cap_usd: float = Field(25_000_000.0, gt=0)
     min_organic_score: float = Field(50.0, ge=0, le=100)  # Jupiter's real-trading score (unknown = not checked)
     # discovery beyond DexScreener: Jupiter's most traded / most organic / trending lists
+    jup_api_url: str = "https://api.jup.ag"  # lite-api.jup.ag is being retired
     jup_discovery: bool = True
     jup_categories: list[str] = Field(default_factory=lambda: ["toptraded", "toporganicscore", "toptrending"])
     jup_interval: Literal["5m", "1h", "6h", "24h"] = "1h"
@@ -192,6 +193,7 @@ class Secrets(BaseModel):
     memes_private_key: SecretStr | None = None  # dedicated Solana wallet for the memecoin agent (base58)
     memes_live: str | None = None
     memes_rpc_url: SecretStr | None = None  # optional private RPC (its URL usually carries an API key)
+    memes_jupiter_api_key: SecretStr | None = None  # optional free key: 1 request/s instead of 0.5
 
 
 def read_env_file(path: Path) -> dict[str, str]:
@@ -226,4 +228,5 @@ def load_secrets(env: Mapping[str, str]) -> Secrets:
         memes_private_key=get("MEMES_PRIVATE_KEY"),
         memes_live=get("MEMES_LIVE"),
         memes_rpc_url=get("MEMES_RPC_URL"),
+        memes_jupiter_api_key=get("MEMES_JUPITER_API_KEY"),
     )

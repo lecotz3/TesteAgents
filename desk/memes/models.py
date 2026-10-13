@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+SOL_MINT = "So11111111111111111111111111111111111111112"
 USDC_DECIMALS = 6
 
 

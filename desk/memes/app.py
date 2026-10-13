@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -11,13 +11,14 @@ import httpx
 from desk.analyst.claude_cli import ClaudeCliAnalyst
 from desk.config import ConfigError, Secrets, Settings
 from desk.executor import LIVE_CONFIRMATION
+from desk.executor.base import ExecutionError
 from desk.journal import Journal, format_note
 from desk.lock import cycle_lock
 from desk.memes.cycle import MemeDeps, run_meme_cycle, run_meme_exits
-from desk.memes.executor import LiveMemeExecutor, MemeExecutor, PaperMemeExecutor, load_wallet, raw_usdc
-from desk.memes.models import USDC_MINT
+from desk.memes.executor import LiveMemeExecutor, MemeExecutor, PaperMemeExecutor, load_wallet, raw_usdc, usdc_raw
+from desk.memes.models import SOL_MINT, USDC_MINT
 from desk.memes.readiness import readiness
-from desk.memes.sources import FETCH_ERRORS, DexScreener, Jupiter, JupiterTokens, RugCheck, SolanaRpc
+from desk.memes.sources import FETCH_ERRORS, DexScreener, Jupiter, JupiterApi, JupiterTokens, RugCheck, SolanaRpc
 from desk.memes.store import MemeStore
 from desk.memes.vetter import MemeVetter
 from desk.memes.x import FxTwitter
@@ -40,6 +41,14 @@ class MemesApp:
     journal: Journal
     notifier: Notifier
     http: httpx.Client
+    _jupiter: JupiterApi | None = field(default=None, repr=False)
+
+    def jupiter(self) -> JupiterApi:
+        """One gateway per run, so quotes, swaps and token lists share Jupiter's rate-limit spacing."""
+        if self._jupiter is None:
+            key = self.secrets.memes_jupiter_api_key
+            self._jupiter = JupiterApi(self.http, self.settings.memes.jup_api_url, key.get_secret_value() if key else None)
+        return self._jupiter
 
     def close(self) -> None:
         self.store.close()
@@ -70,7 +79,7 @@ def rpc_url(app: MemesApp) -> str:
 
 def make_meme_executor(app: MemesApp) -> MemeExecutor:
     m, secrets = app.settings.memes, app.secrets
-    jupiter = Jupiter(app.http)
+    jupiter = Jupiter(app.jupiter())
     if m.mode == "paper":
         return PaperMemeExecutor(jupiter, network_fee_usd=m.network_fee_usd)
     if secrets.memes_live != LIVE_CONFIRMATION:
@@ -105,9 +114,9 @@ def build_deps(app: MemesApp, *, with_vetter: bool) -> MemeDeps:
     m = app.settings.memes
     return MemeDeps(
         settings=m, store=app.store, dex=DexScreener(app.http), rugcheck=RugCheck(app.http),
-        jupiter=Jupiter(app.http), vetter=make_vetter(app) if with_vetter else None,
+        jupiter=Jupiter(app.jupiter()), vetter=make_vetter(app) if with_vetter else None,
         executor=make_meme_executor(app), journal=app.journal, notifier=app.notifier, now=utcnow,
-        x=FxTwitter(app.http, m.x_api_url) if m.x_enabled else None, tokens=JupiterTokens(app.http),
+        x=FxTwitter(app.http, m.x_api_url) if m.x_enabled else None, tokens=JupiterTokens(app.jupiter()),
         exit_guard=lambda: exit_lock(app),
     )
 
@@ -233,11 +242,34 @@ def cmd_memes_live_check(app: MemesApp) -> int:
     if usdc < m.min_trade_usd:
         print("Sem USDC para comprar.")
         ok = False
+    else:
+        ok = _test_order(app, wallet) and ok
     proof = readiness(app.store, m, utcnow())
     if not proof.ready:
         print(f"Aviso: o paper ainda não provou que o agente se paga ({proof.summary}). "
               "A recomendação é esperar (docs/PENDENCIAS.md, D8); a decisão é sua.")
     return _verdict(ok)
+
+
+def _test_order(app: MemesApp, wallet) -> bool:
+    """A real Jupiter order for this wallet, signed locally to prove the key works. Nothing is ever sent."""
+    usd = app.settings.memes.min_trade_usd
+    try:
+        order = Jupiter(app.jupiter()).order(USDC_MINT, SOL_MINT, usdc_raw(usd), taker=wallet.owner)
+    except FETCH_ERRORS as exc:
+        print(f"Jupiter indisponível para o teste de ordem: {type(exc).__name__}")
+        return False
+    if not order.get("transaction"):
+        print(f"Jupiter não montou a transação de teste: {order.get('errorMessage') or order.get('error') or '?'}")
+        return False
+    try:
+        wallet.sign(order["transaction"])
+    except (ExecutionError, ValueError) as exc:
+        print(f"A carteira não conseguiu assinar a transação de teste: {exc}")
+        return False
+    print(f"Teste de ordem: a Jupiter montou uma troca de ${usd:.2f} USDC -> SOL para esta carteira e ela assinou "
+          "localmente (nada foi enviado).")
+    return True
 
 
 def _verdict(ok: bool) -> int:

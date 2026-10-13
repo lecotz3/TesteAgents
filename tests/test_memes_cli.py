@@ -69,6 +69,23 @@ def generated_key():
     return str(kp), str(kp.pubkey())
 
 
+def unsigned_swap_tx(owner: str) -> str:
+    """A gasless-style transaction like Jupiter's: Jupiter pays the fee, the wallet signs its own slot."""
+    import base64
+
+    from solders.hash import Hash
+    from solders.keypair import Keypair
+    from solders.message import MessageV0
+    from solders.pubkey import Pubkey
+    from solders.signature import Signature
+    from solders.system_program import TransferParams, transfer
+    from solders.transaction import VersionedTransaction
+
+    ix = transfer(TransferParams(from_pubkey=Pubkey.from_string(owner), to_pubkey=Keypair().pubkey(), lamports=1))
+    msg = MessageV0.try_compile(Keypair().pubkey(), [ix], [], Hash.default())
+    return base64.b64encode(bytes(VersionedTransaction.populate(msg, [Signature.default()] * 2))).decode()
+
+
 def test_live_with_both_switches_builds_a_signing_executor(tmp_path):
     pytest.importorskip("solders")
     key, owner = generated_key()
@@ -167,12 +184,17 @@ def test_live_check_reads_the_wallet(tmp_path, capsys):
             {"account": {"data": {"parsed": {"info": {"tokenAmount": {"amount": "25000000"}}}}}}]}})
 
     respx.post("https://rpc.test").mock(side_effect=reply)
+    order = respx.get("https://api.jup.ag/swap/v2/order").mock(return_value=httpx.Response(200, json={
+        "transaction": unsigned_swap_tx(owner), "requestId": "r1", "inAmount": "1000000", "outAmount": "5000000"}))
+    a.jupiter().min_interval = 0
     try:
         assert memes_app.cmd_memes_live_check(a) == 0
     finally:
         a.close()
     out = capsys.readouterr().out
     assert owner in out and "0.0500 SOL" in out and "$25.00" in out and "PRONTO" in out
+    assert order.calls[0].request.url.params["taker"] == owner  # a real order for this wallet...
+    assert "nada foi enviado" in out  # ...signed locally and never executed (no /execute route exists here)
     assert "Aviso: o paper ainda não provou" in out  # a warning, not a block: the decision is the owner's
     assert key not in out
 
@@ -258,3 +280,40 @@ def test_main_knows_the_exits_command(tmp_path, monkeypatch):
     monkeypatch.setattr(memes_app, "cmd_memes_exits", lambda a: seen.append(1) or 0)
     assert cli.main(["--config", str(write_config(tmp_path)), "--env-file", str(tmp_path / ".env"), "memes-exits"]) == 0
     assert seen == [1]
+
+
+@respx.mock
+def test_live_check_fails_when_jupiter_will_not_build_the_swap(tmp_path, capsys):
+    pytest.importorskip("solders")
+    key, _ = generated_key()
+    a = live_app(tmp_path, f"MEMES_LIVE=I_UNDERSTAND\nMEMES_PRIVATE_KEY={key}\nMEMES_RPC_URL=https://rpc.test\n"
+                           "TELEGRAM_BOT_TOKEN=123:abc\nTELEGRAM_CHAT_ID=42\n")
+
+    def reply(request):
+        if "getBalance" in request.read().decode():
+            return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {"value": 50_000_000}})
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {"value": [
+            {"account": {"data": {"parsed": {"info": {"tokenAmount": {"amount": "25000000"}}}}}}]}})
+
+    respx.post("https://rpc.test").mock(side_effect=reply)
+    respx.get("https://api.jup.ag/swap/v2/order").mock(return_value=httpx.Response(200, json={
+        "transaction": "", "requestId": "r1", "errorCode": 1, "errorMessage": "Insufficient funds"}))
+    a.jupiter().min_interval = 0
+    try:
+        assert memes_app.cmd_memes_live_check(a) == 1
+    finally:
+        a.close()
+    out = capsys.readouterr().out
+    assert "Insufficient funds" in out and "NÃO está pronto" in out
+
+
+def test_one_jupiter_gateway_with_the_optional_key_serves_quotes_swaps_and_lists(tmp_path):
+    (tmp_path / ".env").write_text("MEMES_JUPITER_API_KEY=jk-1\n", encoding="utf-8")
+    a = memes_app.build_memes_app(write_config(tmp_path), tmp_path / ".env")
+    try:
+        deps = memes_app.build_deps(a, with_vetter=False)
+        gate = a.jupiter()
+        assert deps.jupiter._api is gate and deps.tokens._api is gate and deps.executor._jup._api is gate
+        assert gate.min_interval < 2.0  # the free key's tier: 1 request per second
+    finally:
+        a.close()

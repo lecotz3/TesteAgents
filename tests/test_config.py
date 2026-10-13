@@ -76,3 +76,16 @@ def test_codex_is_refused_in_live_mode(tmp_path):
     cfg.write_text('mode = "live"\n[analysis]\nanalyst = "codex"\n', encoding="utf-8")
     with pytest.raises(ConfigError, match="codex"):
         load_settings(cfg)
+
+
+def test_jupiter_key_is_optional_and_hidden():
+    secrets = load_secrets({"MEMES_JUPITER_API_KEY": " jup-secret-key "})
+    assert secrets.memes_jupiter_api_key.get_secret_value() == "jup-secret-key"
+    assert "jup-secret-key" not in repr(secrets)
+    assert load_secrets({}).memes_jupiter_api_key is None
+
+
+def test_jupiter_gateway_defaults_to_api_jup_ag(tmp_path):
+    cfg = tmp_path / "config.toml"
+    cfg.write_text("", encoding="utf-8")
+    assert load_settings(cfg).memes.jup_api_url == "https://api.jup.ag"  # lite-api.jup.ag is being retired

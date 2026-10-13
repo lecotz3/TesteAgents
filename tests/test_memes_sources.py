@@ -1,14 +1,20 @@
+import json
+
 import httpx
 import pytest
 import respx
 
-from desk.memes.sources import DexScreener, Jupiter, RugCheck, parse_pair, parse_safety
+from desk.memes.sources import DexScreener, Jupiter, JupiterApi, JupiterTokens, RugCheck, parse_pair, parse_safety
 from tests.factories import NOW
 from tests.meme_factories import MINT, USDC, raw_pair, raw_rugcheck
 
 DEX = "https://api.dexscreener.com"
 RUG = "https://api.rugcheck.xyz"
-JUP = "https://lite-api.jup.ag"
+JUP = "https://api.jup.ag"
+
+
+def api(http, **kw):
+    return JupiterApi(http, min_interval=0, **kw)
 
 
 def test_parse_pair_reads_real_fields():
@@ -117,20 +123,20 @@ def test_rugcheck_report_is_parsed():
 
 @respx.mock
 def test_jupiter_quote_reads_amounts_and_impact():
-    respx.get(JUP + "/ultra/v1/order").mock(return_value=httpx.Response(200, json={
+    respx.get(JUP + "/swap/v2/order").mock(return_value=httpx.Response(200, json={
         "inAmount": "3000000", "outAmount": "2000000000", "priceImpactPct": "-0.015", "feeBps": 10,
         "transaction": None, "requestId": "r1", "errorCode": None}))
     with httpx.Client() as http:
-        q = Jupiter(http).quote(USDC, MINT, 3_000_000)
+        q = Jupiter(api(http)).quote(USDC, MINT, 3_000_000)
     assert q.out_amount == 2_000_000_000 and q.price_impact_pct == pytest.approx(1.5) and q.fee_bps == 10
 
 
 @respx.mock
 def test_jupiter_quote_without_route_is_none():
-    respx.get(JUP + "/ultra/v1/order").mock(return_value=httpx.Response(200, json={
+    respx.get(JUP + "/swap/v2/order").mock(return_value=httpx.Response(200, json={
         "errorCode": 1, "errorMessage": "No routes found", "outAmount": None}))
     with httpx.Client() as http:
-        assert Jupiter(http).quote(USDC, MINT, 3_000_000) is None
+        assert Jupiter(api(http)).quote(USDC, MINT, 3_000_000) is None
 
 
 def jup_token(mint, **o):
@@ -140,26 +146,90 @@ def jup_token(mint, **o):
 
 @respx.mock
 def test_jupiter_tokens_discover_merges_lists_and_survives_a_failure():
-    from desk.memes.sources import JupiterTokens
-
     respx.get(JUP + "/tokens/v2/toptraded/1h").mock(return_value=httpx.Response(200, json=[jup_token("A"), jup_token("B")]))
     respx.get(JUP + "/tokens/v2/toporganicscore/1h").mock(return_value=httpx.Response(500))
     respx.get(JUP + "/tokens/v2/toptrending/1h").mock(return_value=httpx.Response(200, json=[jup_token("B"), jup_token("C")]))
     with httpx.Client() as http:
-        tokens = JupiterTokens(http)
+        tokens = JupiterTokens(api(http))
         assert tokens.discover(("toptraded", "toporganicscore", "toptrending"), "1h") == ["A", "B", "C"]
 
 
 @respx.mock
 def test_jupiter_tokens_info_reads_organic_score_and_x_link_in_batches():
-    from desk.memes.sources import JupiterTokens
-
     mints = [f"M{i}" for i in range(101)]
     route = respx.get(JUP + "/tokens/v2/search").mock(side_effect=lambda req: httpx.Response(200, json=[
         jup_token(m, organicScore=None if m == "M5" else 75.0, twitter=None if m == "M6" else "https://x.com/a/status/9")
         for m in req.url.params["query"].split(",")]))
     with httpx.Client() as http:
-        info = JupiterTokens(http).info(mints)
+        info = JupiterTokens(api(http)).info(mints)
     assert route.call_count == 2 and len(info) == 101
     assert info["M0"].organic_score == 75.0 and info["M0"].twitter == "https://x.com/a/status/9"
     assert info["M5"].organic_score is None and info["M6"].twitter is None
+
+
+class FakeClock:
+    def __init__(self):
+        self.t = 100.0
+        self.slept: list[float] = []
+
+    def __call__(self) -> float:
+        return self.t
+
+    def sleep(self, seconds: float) -> None:
+        self.slept.append(seconds)
+        self.t += seconds
+
+
+@respx.mock
+def test_jupiter_api_sends_the_key_only_when_configured():
+    route = respx.get(JUP + "/tokens/v2/search").mock(return_value=httpx.Response(200, json=[]))
+    with httpx.Client() as http:
+        api(http, api_key="k-123").get("/tokens/v2/search", params={"query": "A"})
+        api(http).get("/tokens/v2/search", params={"query": "A"})
+    assert route.calls[0].request.headers["x-api-key"] == "k-123"
+    assert "x-api-key" not in route.calls[1].request.headers
+
+
+@respx.mock
+def test_jupiter_api_spaces_calls_to_respect_the_rate_limit():
+    respx.get(JUP + "/tokens/v2/search").mock(return_value=httpx.Response(200, json=[]))
+    clock = FakeClock()
+    with httpx.Client() as http:
+        gate = JupiterApi(http, min_interval=2.0, clock=clock, sleep=clock.sleep)
+        gate.get("/tokens/v2/search")
+        clock.t += 0.5
+        gate.get("/tokens/v2/search")
+    assert clock.slept == [pytest.approx(1.5)]  # the first call never waits
+
+
+def test_jupiter_api_default_spacing_follows_the_tier():
+    with httpx.Client() as http:
+        assert JupiterApi(http).min_interval >= 2.0  # keyless: 0.5 request per second
+        assert 1.0 <= JupiterApi(http, api_key="k").min_interval < 2.0  # free key: 1 per second
+
+
+@respx.mock
+def test_jupiter_api_waits_and_retries_a_429():
+    route = respx.get(JUP + "/swap/v2/order").mock(side_effect=[
+        httpx.Response(429, headers={"Retry-After": "3"}), httpx.Response(200, json={"outAmount": "1"})])
+    clock = FakeClock()
+    with httpx.Client() as http:
+        resp = JupiterApi(http, min_interval=0, clock=clock, sleep=clock.sleep).get("/swap/v2/order")
+    assert resp.json() == {"outAmount": "1"} and route.call_count == 2 and clock.slept == [3.0]
+
+
+@respx.mock
+def test_jupiter_api_gives_up_after_repeated_429s():
+    route = respx.get(JUP + "/swap/v2/order").mock(return_value=httpx.Response(429))
+    clock = FakeClock()
+    with httpx.Client() as http, pytest.raises(httpx.HTTPStatusError):
+        JupiterApi(http, min_interval=0, clock=clock, sleep=clock.sleep, retries=2).get("/swap/v2/order")
+    assert route.call_count == 3
+
+
+@respx.mock
+def test_jupiter_execute_posts_to_swap_v2():
+    route = respx.post(JUP + "/swap/v2/execute").mock(return_value=httpx.Response(200, json={"status": "Success"}))
+    with httpx.Client() as http:
+        assert Jupiter(api(http)).execute("SIGNED", "r1") == {"status": "Success"}
+    assert json.loads(route.calls[0].request.content) == {"signedTransaction": "SIGNED", "requestId": "r1"}

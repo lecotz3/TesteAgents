@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Callable
 
 import httpx
 
@@ -13,7 +15,8 @@ log = logging.getLogger("desk")
 
 DEX_URL = "https://api.dexscreener.com"
 RUG_URL = "https://api.rugcheck.xyz"
-JUP_URL = "https://lite-api.jup.ag"
+# lite-api.jup.ag is being retired; api.jup.ag serves keyless calls at 0.5/s and a free key (developers.jup.ag/portal) at 1/s.
+JUP_URL = "https://api.jup.ag"
 DISCOVERY_FEEDS = (
     "/token-profiles/latest/v1",  # tokens that just bought a profile
     "/token-boosts/latest/v1",  # tokens paying for promotion right now
@@ -142,6 +145,46 @@ class DexScreener:
         return best
 
 
+class JupiterApi:
+    """Every Jupiter call goes through here: one base URL, the optional key, spacing for the per-IP limit, 429 retries."""
+
+    def __init__(self, http: httpx.Client, base_url: str = JUP_URL, api_key: str | None = None, *,
+                 min_interval: float | None = None, retries: int = 2,
+                 clock: Callable[[], float] = time.monotonic, sleep: Callable[[float], None] = time.sleep):
+        self._http = http
+        self._base = base_url.rstrip("/")
+        self._headers = {"x-api-key": api_key} if api_key else {}
+        self.min_interval = (1.1 if api_key else 2.1) if min_interval is None else min_interval
+        self._retries = retries
+        self._clock = clock
+        self._sleep = sleep
+        self._last: float | None = None
+
+    def _space(self) -> None:
+        if self._last is not None:
+            wait = self.min_interval - (self._clock() - self._last)
+            if wait > 0:
+                self._sleep(wait)
+        self._last = self._clock()
+
+    def request(self, method: str, path: str, **kwargs) -> httpx.Response:
+        for attempt in range(self._retries + 1):
+            self._space()
+            resp = self._http.request(method, self._base + path, headers=self._headers, **kwargs)
+            if resp.status_code != 429 or attempt == self._retries:
+                resp.raise_for_status()
+                return resp
+            retry_after = _num(resp.headers.get("Retry-After"))
+            self._sleep(min(retry_after, 30.0) if retry_after > 0 else max(self.min_interval, 1.0) * 2)
+        raise AssertionError("unreachable")
+
+    def get(self, path: str, **kwargs) -> httpx.Response:
+        return self.request("GET", path, **kwargs)
+
+    def post(self, path: str, **kwargs) -> httpx.Response:
+        return self.request("POST", path, **kwargs)
+
+
 @dataclass(frozen=True)
 class TokenInfo:
     organic_score: float | None
@@ -153,17 +196,14 @@ class JupiterTokens:
 
     SEARCH_BATCH = 100
 
-    def __init__(self, http: httpx.Client, base_url: str = JUP_URL):
-        self._http = http
-        self._base = base_url
+    def __init__(self, api: JupiterApi):
+        self._api = api
 
     def discover(self, categories: tuple[str, ...] | list[str], interval: str, limit: int = 100) -> list[str]:
         seen: dict[str, None] = {}
         for category in categories:
             try:
-                resp = self._http.get(f"{self._base}/tokens/v2/{category}/{interval}", params={"limit": limit})
-                resp.raise_for_status()
-                items = resp.json()
+                items = self._api.get(f"/tokens/v2/{category}/{interval}", params={"limit": limit}).json()
             except FETCH_ERRORS as exc:
                 log.warning("lista %s da Jupiter indisponível: %s", category, type(exc).__name__)
                 continue
@@ -175,9 +215,7 @@ class JupiterTokens:
     def info(self, mints: list[str]) -> dict[str, TokenInfo]:
         found: dict[str, TokenInfo] = {}
         for i in range(0, len(mints), self.SEARCH_BATCH):
-            resp = self._http.get(f"{self._base}/tokens/v2/search",
-                                  params={"query": ",".join(mints[i:i + self.SEARCH_BATCH])})
-            resp.raise_for_status()
+            resp = self._api.get("/tokens/v2/search", params={"query": ",".join(mints[i:i + self.SEARCH_BATCH])})
             for item in resp.json() or []:
                 if not isinstance(item, dict) or not item.get("id"):
                     continue
@@ -201,19 +239,16 @@ class RugCheck:
 
 
 class Jupiter:
-    """Ultra API quotes. Without a taker the order carries no transaction: a free, exact executable price."""
+    """Swap API V2 (the Ultra order/execute flow). Without a taker the order has no transaction: a free, exact price."""
 
-    def __init__(self, http: httpx.Client, base_url: str = JUP_URL):
-        self._http = http
-        self._base = base_url
+    def __init__(self, api: JupiterApi):
+        self._api = api
 
     def order(self, input_mint: str, output_mint: str, amount: int, taker: str | None = None) -> dict:
         params = {"inputMint": input_mint, "outputMint": output_mint, "amount": str(amount)}
         if taker:
             params["taker"] = taker
-        resp = self._http.get(f"{self._base}/ultra/v1/order", params=params)
-        resp.raise_for_status()
-        return resp.json()
+        return self._api.get("/swap/v2/order", params=params).json()
 
     def quote(self, input_mint: str, output_mint: str, amount: int) -> Quote | None:
         data = self.order(input_mint, output_mint, amount)
@@ -225,10 +260,8 @@ class Jupiter:
         )
 
     def execute(self, signed_transaction: str, request_id: str) -> dict:
-        resp = self._http.post(f"{self._base}/ultra/v1/execute",
-                               json={"signedTransaction": signed_transaction, "requestId": request_id})
-        resp.raise_for_status()
-        return resp.json()
+        return self._api.post("/swap/v2/execute",
+                              json={"signedTransaction": signed_transaction, "requestId": request_id}).json()
 
 
 class SolanaRpc:
