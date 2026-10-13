@@ -63,6 +63,9 @@
   details summary { cursor: pointer; font-weight: 600; }
   svg text { fill: var(--muted); font-size: 11px; }
   .empty { color: var(--muted); padding: 8px 0; }
+  .group-title { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px;
+                 padding-top: 16px; border-top: 2px solid var(--line); }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
@@ -110,6 +113,47 @@
   <section>
     <details><summary>Diário (trades.txt)</summary><pre id="journal"></pre></details>
   </section>
+
+  <div class="group-title">
+    <h1>Memecoins (Solana)</h1>
+    <span id="m-mode" class="badge">…</span>
+    <span id="m-life" class="badge">…</span>
+    <span id="m-sched" class="badge">…</span>
+  </div>
+  <div id="memes-empty" class="alert" hidden>
+    O agente de memecoins ainda não rodou. Para um ciclo agora: <b>python -m desk memes</b>.
+    Para rodar sozinho a cada 3 minutos: scripts\install_task.ps1 (instala as três tarefas).
+  </div>
+  <div id="memes" hidden>
+    <div id="m-alerts" class="alerts"></div>
+    <div id="m-cards" class="cards"></div>
+    <div class="grid2" style="margin-top:16px">
+      <section>
+        <h2>Vida do agente de memecoins (equity, 30 dias)</h2>
+        <div id="m-chart"></div>
+      </section>
+      <section>
+        <h2>Último ciclo</h2>
+        <div id="m-last"></div>
+      </section>
+    </div>
+    <section style="margin-top:16px">
+      <h2>Posições em memecoins</h2>
+      <div class="table-wrap"><table id="m-positions"></table></div>
+    </section>
+    <section style="margin-top:16px">
+      <h2>Tokens que ele checou a fundo</h2>
+      <div class="table-wrap"><table id="m-decisions"></table></div>
+    </section>
+    <section style="margin-top:16px">
+      <h2>Compras e vendas</h2>
+      <div class="table-wrap"><table id="m-trades"></table></div>
+    </section>
+    <section style="margin-top:16px">
+      <details><summary>Diário das memecoins (memes.txt)</summary><pre id="m-journal"></pre></details>
+    </section>
+  </div>
+
   <section>
     <details><summary>Log técnico (desk.log)</summary><pre id="log"></pre></details>
   </section>
@@ -128,8 +172,26 @@ const LABELS = {
   daily_analysis_cap: ["Teto diário de análises", "warn"], daily_budget: ["Sem orçamento hoje", "warn"],
   fair_value_changed: ["Valor justo mudou", ""], mispricing_closed: ["Distorção fechou", "good"],
   resolving_soon: ["Perto da resolução", ""], settled: ["Resolvido", ""],
+  // memecoins
+  bought: ["Comprou", "good"], alerted: ["Alerta enviado", "good"], vetter_avoid: ["Claude vetou", "warn"],
+  vet_error: ["Claude falhou", "warn"], buy_uncertain: ["Compra incerta", "bad"], price_mismatch: ["Preço destoa", ""],
+  round_trip_cost: ["Ida e volta cara", ""], cannot_sell: ["Sem rota de venda", "bad"], price_impact: ["Impacto alto", ""],
+  lp_unlocked: ["Liquidez destravada", ""], concentrated_holders: ["Poucos donos", ""], insiders: ["Insiders demais", ""],
+  creator_holds: ["Criador segura muito", ""], transfer_fee: ["Taxa de transferência", "bad"], rugged: ["Golpe (rug)", "bad"],
+  mint_authority: ["Pode imprimir tokens", "bad"], freeze_authority: ["Pode congelar tokens", "bad"],
+  danger_risk: ["Risco grave (RugCheck)", "bad"], wallet_usdc_short: ["Carteira sem USDC", "bad"],
+  wallet_sol_short: ["Carteira sem SOL", "bad"], rugcheck_unavailable: ["RugCheck fora", "warn"],
+  quote_unavailable: ["Jupiter fora", "warn"], vet_cap: ["Teto diário do Claude", "warn"],
+  vet_cycle_cap: ["Fica p/ próximo ciclo", ""], no_cash: ["Sem caixa", "warn"], low_liquidity: ["Liquidez baixa", ""],
+  too_new: ["Novo demais", ""], too_old: ["Velho demais", ""], low_volume: ["Volume baixo", ""],
+  few_trades: ["Poucos negócios", ""], selling_pressure: ["Mais venda que compra", ""], vertical_pump: ["Subiu na vertical", ""],
+  falling: ["Caindo", ""], market_cap_out_of_range: ["Market cap fora da faixa", ""],
+  stop_loss: ["Stop-loss", "bad"], take_profit: ["Realizou lucro", "good"], trailing_stop: ["Stop móvel", ""],
+  max_hold: ["Tempo máximo", ""], liquidity_drained: ["Liquidez sumindo", "bad"], missing_in_wallet: ["Sumiu da carteira", "bad"],
 };
 const ACTIONS = { BUY: "Compra", SELL: "Venda", SETTLE: "Liquidação" };
+const fomoLink = (mint, text) => el("a", { href: "https://fomo.family/tokens/solana/" + encodeURIComponent(mint),
+  target: "_blank", rel: "noopener noreferrer", text });
 const CONFIDENCE = { low: "baixa", medium: "média", high: "alta" };
 const usd = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "USD" });
 const fmtUsd = (x) => (x === null || x === undefined ? "—" : usd.format(x));
@@ -186,15 +248,17 @@ function renderHeader(s) {
   const life = document.getElementById("b-life");
   life.textContent = s.halted ? "DESLIGADO" : "VIVO";
   life.className = "badge " + (s.halted ? "bad" : "good");
-  const sched = document.getElementById("b-sched");
-  const sc = s.scheduler;
-  if (!sc) { sched.textContent = "Agendador: n/d"; sched.className = "badge"; }
-  else if (sc.installed === false) { sched.textContent = "Agendador: não instalado"; sched.className = "badge bad"; }
-  else if (sc.installed === null) { sched.textContent = "Agendador: ?"; sched.className = "badge warn"; }
+  schedulerBadge(document.getElementById("b-sched"), s.scheduler);
+}
+
+function schedulerBadge(node, sc) {
+  if (!sc) { node.textContent = "Agendador: n/d"; node.className = "badge"; }
+  else if (sc.installed === false) { node.textContent = "Agendador: não instalado"; node.className = "badge bad"; }
+  else if (sc.installed === null) { node.textContent = "Agendador: ?"; node.className = "badge warn"; }
   else {
     const next = sc.next_run ? new Date(sc.next_run).toLocaleTimeString("pt-BR", { timeStyle: "short" }) : "?";
-    sched.textContent = `Agendador: ${sc.state === "Running" ? "rodando agora" : "próximo ciclo " + next}`;
-    sched.className = "badge " + (sc.state === "Disabled" ? "warn" : "good");
+    node.textContent = `Agendador: ${sc.state === "Running" ? "rodando agora" : "próximo ciclo " + next}`;
+    node.className = "badge " + (sc.state === "Disabled" ? "warn" : "good");
   }
 }
 
@@ -230,12 +294,15 @@ function renderCards(s) {
 }
 
 function renderChart(s) {
-  const box = document.getElementById("chart");
+  drawEquity("chart", s.equity_curve, { shutdown_line: s.economics.shutdown_line, bankroll_start: s.economics.bankroll_start });
+}
+
+function drawEquity(boxId, curve, e) {
+  const box = document.getElementById(boxId);
   box.replaceChildren();
-  const pts = s.equity_curve.map(([t, v]) => [new Date(t).getTime(), v]);
+  const pts = curve.map(([t, v]) => [new Date(t).getTime(), v]);
   if (pts.length < 2) { box.append(el("div", { class: "empty", text: "Sem histórico suficiente ainda: cada ciclo adiciona um ponto." })); return; }
   const W = 800, H = 240, L = 64, R = 10, T = 12, B = 26;
-  const e = s.economics;
   const ys = pts.map((p) => p[1]).concat([e.shutdown_line, e.bankroll_start]);
   let lo = Math.min(...ys), hi = Math.max(...ys);
   const pad = (hi - lo) * 0.08 || 1; lo -= pad; hi += pad;
@@ -311,6 +378,83 @@ function render(s) {
     "Nenhum ciclo ainda.");
   document.getElementById("journal").textContent = s.journal_tail.join("\n") || "(vazio: o diário recebe entradas, saídas e relatórios)";
   document.getElementById("log").textContent = s.log_tail.join("\n") || "(vazio)";
+  renderMemes(s.memes);
+}
+
+function renderMemes(m) {
+  document.getElementById("memes-empty").hidden = !!m;
+  document.getElementById("memes").hidden = !m;
+  const mode = document.getElementById("m-mode"), life = document.getElementById("m-life");
+  if (!m) {
+    mode.textContent = "não iniciado"; mode.className = "badge"; life.hidden = true;
+    schedulerBadge(document.getElementById("m-sched"), null);
+    return;
+  }
+  life.hidden = false;
+  mode.textContent = (m.mode === "live" ? "DINHEIRO REAL" : "PAPER (simulação)") + (m.auto_trade ? "" : " · só alertas");
+  mode.className = "badge " + (m.mode === "live" ? "bad" : "");
+  life.textContent = m.halted ? "DESLIGADO" : "VIVO";
+  life.className = "badge " + (m.halted ? "bad" : "good");
+  schedulerBadge(document.getElementById("m-sched"), m.scheduler);
+
+  const alerts = document.getElementById("m-alerts");
+  alerts.replaceChildren();
+  const add = (text, bad) => alerts.append(el("div", { class: "alert" + (bad ? " bad" : ""), text }));
+  if (m.halted) add("O agente de memecoins está DESLIGADO: a banca caiu até a linha de corte. Ele não compra nem gasta, mas segue vendendo pelas regras. Para religar: python -m desk memes-resume", true);
+  if (m.scheduler && m.scheduler.installed === false) add("A tarefa das memecoins não está agendada: ele só roda quando você chama 'python -m desk memes'. Para ligar: scripts\\install_task.ps1");
+  if (m.last_cycle_minutes_ago !== null && m.last_cycle_minutes_ago > 15) add(`Último ciclo das memecoins há ${Math.round(m.last_cycle_minutes_ago)} min.`);
+  const lastCycle = m.cycles[0];
+  if (lastCycle && lastCycle.errors && lastCycle.errors.length) add(`O último ciclo das memecoins teve ${lastCycle.errors.length} erro(s); veja "Último ciclo".`);
+
+  document.getElementById("m-cards").replaceChildren(
+    card("Equity", fmtUsd(m.equity), `${fmtSigned(m.net)} desde a banca inicial (${fmtUsd(m.bankroll_start)})`, signClass(m.net)),
+    card("Custo para existir", fmtUsd(m.costs_total), `24h: ${fmtUsd(m.costs_24h)} (checagens do Claude e aluguel)`),
+    card("Queda desde o pico", fmtPct(m.drawdown, 1), `desliga em ${fmtUsd(m.shutdown_line)} (pico ${fmtUsd(m.peak)})`,
+         m.drawdown > m.drawdown_halt / 2 ? "neg" : "", (100 * m.drawdown) / m.drawdown_halt, true),
+    card("Posições", `${m.positions.length}/${m.max_positions}`, `caixa livre ${fmtUsd(m.cash)}`),
+    card("Trades fechados", String(m.closed.count), m.closed.count ? `${m.closed.wins} com lucro, total ${fmtSigned(m.closed.pnl)}` : "nenhum ainda",
+         signClass(m.closed.pnl)),
+    card("Checagens do Claude (24h)", `${m.vets_24h}/${m.vet_cap}`, m.analyst === "none" ? "desligadas: só as regras" : "ele só compra o que o Claude não vetar",
+         "", m.vet_cap > 0 ? (100 * m.vets_24h) / m.vet_cap : null),
+  );
+  drawEquity("m-chart", m.equity_curve, { shutdown_line: m.shutdown_line, bankroll_start: m.bankroll_start });
+
+  const box = document.getElementById("m-last");
+  box.replaceChildren();
+  const c = m.cycles[0];
+  if (!c) box.append(el("div", { class: "empty", text: "Nenhum ciclo ainda." }));
+  else {
+    const stat = (n, t) => el("div", { class: "stat" }, [el("div", { class: "n", text: String(n ?? 0) }), el("div", { class: "t", text: t })]);
+    box.append(
+      el("div", { class: "muted", text: `${fmtTime(c.ts)} (há ${Math.round(m.last_cycle_minutes_ago)} min)` }),
+      el("div", { class: "stats" }, [stat(c.discovered, "descobertos"), stat(c.candidates, "passaram no mercado"), stat(c.checked, "checados a fundo"),
+        stat(c.vetted, "pelo Claude"), stat(c.entries, "compras"), stat(c.exits, "vendas")]),
+    );
+    const skips = Object.entries(c.skips || {});
+    box.append(el("div", { class: "muted", text: "Por que não comprou:" }));
+    box.append(skips.length ? el("div", { class: "chips" }, skips.map(([k, n]) => { const b = label(k); b.textContent += ` × ${n}`; return b; }))
+                            : el("div", { class: "empty", text: "nada para pular" }));
+    if (c.errors && c.errors.length) {
+      box.append(el("div", { class: "muted", text: "Erros:", style: "margin-top:8px" }));
+      box.append(el("pre", {}, c.errors.join("\n")));
+    }
+  }
+
+  const pct = (x) => (x > 0 ? "+" : "") + fmtNum(x, 0) + "%";
+  table("m-positions", [["Token"], ["Custo", "num"], ["Vale agora", "num"], ["Variação", "num"], ["Pico", "num"], ["Metade vendida"], ["Desde"]],
+    m.positions.map((p) => [[fomoLink(p.mint, `${p.symbol} (${p.name})`), "q"], [fmtUsd(p.cost), "num"], [fmtUsd(p.value), "num"],
+      [el("span", { class: signClass(p.change_pct), text: pct(p.change_pct) }), "num"], [pct(p.peak_pct), "num"],
+      [p.take_profit_done ? "sim" : "não"], [fmtTime(p.opened_at)]]),
+    "Nenhuma posição aberta.");
+  table("m-decisions", [["Quando"], ["Token"], ["Preço", "num"], ["Liquidez", "num"], ["Market cap", "num"], ["Decisão"], ["Detalhe"]],
+    m.decisions.map((d) => [[fmtTime(d.ts)], [fomoLink(d.mint, d.symbol)], [d.price_usd === null ? "—" : "$" + Number(d.price_usd).toPrecision(4), "num"],
+      [fmtUsd(d.liquidity_usd), "num"], [fmtUsd(d.market_cap_usd), "num"], [label(d.decision)], [d.detail || "", "q"]]),
+    "Nenhum token passou dos filtros de mercado ainda. Os rejeitados de cara (liquidez, idade, volume) só aparecem nos contadores do último ciclo.");
+  table("m-trades", [["Quando"], ["Token"], ["Ação"], ["Valor", "num"], ["Caixa", "num"], ["Motivo"]],
+    m.trades.map((t) => [[fmtTime(t.ts)], [fomoLink(t.mint, t.symbol)], [ACTIONS[t.side] || t.side], [fmtUsd(t.usd), "num"],
+      [el("span", { class: signClass(t.cash_delta), text: fmtSigned(t.cash_delta) }), "num"], [LABELS[t.reason] ? label(t.reason) : t.reason]]),
+    "Nenhuma compra ou venda ainda.");
+  document.getElementById("m-journal").textContent = m.journal_tail.join("\n") || "(vazio: o diário recebe compras, vendas e o post-mortem)";
 }
 
 async function refresh() {

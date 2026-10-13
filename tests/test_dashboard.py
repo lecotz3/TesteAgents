@@ -10,7 +10,10 @@ from desk.config import Settings
 from desk.dashboard import downsample, make_server, snapshot, tail, windows_scheduler
 from desk.models import TradeRecord
 from desk.store import Store
+from desk.memes.models import MemeFill
+from desk.memes.store import MemeStore
 from tests.factories import NOW, make_position
+from tests.meme_factories import MINT, make_meme_position
 
 
 @pytest.fixture
@@ -59,6 +62,41 @@ def test_snapshot_never_contains_secrets(state):
     assert "supersecret" not in json.dumps(snapshot(state, Settings(), NOW, no_scheduler))
 
 
+def test_snapshot_without_the_memes_agent_has_no_memes_section(state):
+    assert snapshot(state, Settings(), NOW, no_scheduler)["memes"] is None
+
+
+def add_memes(state_dir):
+    store = MemeStore(state_dir / "memes.db", start_cash=100.0)
+    store.ensure_mode("paper")
+    pos = make_meme_position()
+    store.open_position(pos, MemeFill("BUY", pos.amount_raw, 3.0, 0.002), NOW - timedelta(hours=1), "ida e volta 2%")
+    store.mark_price(pos.id, 0.003)
+    store.charge(NOW - timedelta(minutes=30), "vet", 0.01, "SEALS")
+    store.record_equity(NOW - timedelta(minutes=5), 102.99, 96.99, 6.0)
+    store.record_cycle(NOW - timedelta(minutes=5), {"discovered": 59, "entries": 1, "skips": {}, "errors": []}, [
+        {"mint": MINT, "symbol": "SEALS", "price_usd": 0.0015, "liquidity_usd": 1e5, "market_cap_usd": 1.3e6,
+         "decision": "bought", "detail": "$3.00"},
+    ])
+    store.close()
+    (state_dir / "memes.txt").write_text("COMPRA MEMECOIN [PAPER] SEALS\n", encoding="utf-8")
+
+
+def test_snapshot_shows_the_memes_agent(state):
+    add_memes(state)
+    memes = snapshot(state, Settings(), NOW, no_scheduler, memes_scheduler=lambda: {"installed": False})["memes"]
+    assert memes["mode"] == "paper" and memes["equity"] == pytest.approx(102.99)
+    assert memes["costs_total"] == pytest.approx(0.01) and memes["net"] == pytest.approx(2.99)
+    [pos] = memes["positions"]
+    assert pos["symbol"] == "SEALS" and pos["value"] == pytest.approx(6.0) and pos["change_pct"] == pytest.approx(100)
+    assert pos["link"] == "https://fomo.family/tokens/solana/" + MINT
+    assert memes["trades"][0]["side"] == "BUY" and memes["decisions"][0]["decision"] == "bought"
+    assert memes["cycles"][0]["discovered"] == 59 and memes["last_cycle_minutes_ago"] == pytest.approx(5)
+    assert memes["journal_tail"] == ["COMPRA MEMECOIN [PAPER] SEALS"] and memes["scheduler"] == {"installed": False}
+    assert memes["shutdown_line"] == pytest.approx(102.99 * 0.6)
+    json.dumps(memes)
+
+
 def test_tail_handles_missing_files_and_long_logs(tmp_path):
     assert tail(tmp_path / "nope.log", 5) == []
     log = tmp_path / "big.log"
@@ -84,6 +122,17 @@ def test_scheduler_status_parses_powershell_json():
         raise FileNotFoundError("powershell")
 
     assert windows_scheduler(run=broken, platform="win32")["installed"] is None
+
+
+def test_scheduler_status_can_ask_about_the_memes_task():
+    seen = []
+
+    def fake_run(cmd, **kwargs):
+        seen.append(cmd[-1])
+        return subprocess.CompletedProcess(cmd, 0, stdout='{"installed": false}', stderr="")
+
+    assert windows_scheduler(run=fake_run, platform="win32", task="PolymarketDeskMemes") == {"installed": False}
+    assert "'PolymarketDeskMemes'" in seen[0] and "'PolymarketDesk'" not in seen[0]
 
 
 @pytest.fixture

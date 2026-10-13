@@ -13,21 +13,27 @@ from typing import Callable
 
 from desk.config import Settings
 from desk.economy import economics
+from desk.memes.store import MemeStore
 from desk.store import Store
 
 MAX_CURVE_POINTS = 300
 CREATE_NO_WINDOW = 0x08000000
 
-# Asks Task Scheduler about the desk task and prints one JSON line (empty task -> installed=false).
-_PS_QUERY = (
-    "$t = Get-ScheduledTask -TaskName 'PolymarketDesk' -ErrorAction SilentlyContinue; "
-    "if (-not $t) { '{\"installed\": false}' } else { "
-    "$i = Get-ScheduledTaskInfo -TaskName 'PolymarketDesk'; "
-    "@{installed=$true; state=[string]$t.State; "
-    "next_run=$i.NextRunTime.ToString('yyyy-MM-ddTHH:mm:sszzz'); "
-    "last_run=$i.LastRunTime.ToString('yyyy-MM-ddTHH:mm:sszzz'); "
-    "last_result=$i.LastTaskResult} | ConvertTo-Json -Compress }"
-)
+DESK_TASK = "PolymarketDesk"
+MEMES_TASK = "PolymarketDeskMemes"
+
+
+def _ps_query(task: str) -> str:
+    """Asks Task Scheduler about one of our tasks and prints one JSON line (missing task -> installed=false)."""
+    return (
+        f"$t = Get-ScheduledTask -TaskName '{task}' -ErrorAction SilentlyContinue; "
+        "if (-not $t) { '{\"installed\": false}' } else { "
+        f"$i = Get-ScheduledTaskInfo -TaskName '{task}'; "
+        "@{installed=$true; state=[string]$t.State; "
+        "next_run=$i.NextRunTime.ToString('yyyy-MM-ddTHH:mm:sszzz'); "
+        "last_run=$i.LastRunTime.ToString('yyyy-MM-ddTHH:mm:sszzz'); "
+        "last_result=$i.LastTaskResult} | ConvertTo-Json -Compress }"
+    )
 
 
 def _iso(dt: datetime | None) -> str | None:
@@ -54,13 +60,13 @@ def downsample(points: list, limit: int) -> list:
     return [points[round(i * step)] for i in range(limit)]
 
 
-def windows_scheduler(run: Callable = subprocess.run, platform: str = sys.platform) -> dict | None:
-    """State of the PolymarketDesk scheduled task, or None off Windows."""
+def windows_scheduler(run: Callable = subprocess.run, platform: str = sys.platform, task: str = DESK_TASK) -> dict | None:
+    """State of one of our scheduled tasks, or None off Windows."""
     if platform != "win32":
         return None
     try:
         out = run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", _PS_QUERY],
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", _ps_query(task)],
             capture_output=True, text=True, timeout=20, creationflags=CREATE_NO_WINDOW,
         )
         return json.loads((out.stdout or "").strip() or "{}")
@@ -84,7 +90,62 @@ class CachedScheduler:
         return self._value
 
 
-def snapshot(state_dir: Path, settings: Settings, now: datetime, scheduler: Callable[[], dict | None]) -> dict:
+def memes_snapshot(state_dir: Path, settings: Settings, now: datetime,
+                   scheduler: Callable[[], dict | None] | None) -> dict | None:
+    """The memecoin agent's money, positions and history, or None when it never ran."""
+    path = state_dir / "memes.db"
+    if not path.exists():
+        return None
+    m = settings.memes
+    store = MemeStore.open_readonly(path)
+    try:
+        last = store.last_equity()
+        equity = last if last is not None else store.cash()
+        peak = store.peak()
+        positions = store.open_positions()
+        closed = store.closed_positions()
+        cycles = store.recent_cycles(30)
+        curve = downsample(store.equity_history(now - timedelta(days=30)), MAX_CURVE_POINTS)
+        trade_keys = ("ts", "symbol", "mint", "side", "usd", "fee_usd", "cash_delta", "price_usd", "reason", "signature")
+        return {
+            "mode": m.mode, "auto_trade": m.auto_trade, "analyst": m.analyst, "halted": store.is_halted(),
+            "equity": equity, "cash": store.cash(), "peak": peak, "bankroll_start": m.bankroll_start_usd,
+            "net": round(equity - m.bankroll_start_usd, 2) + 0.0,
+            "drawdown": (peak - equity) / peak if peak > 0 else 0.0, "drawdown_halt": m.drawdown_halt,
+            "shutdown_line": peak * (1 - m.drawdown_halt),
+            "costs_total": store.total_costs(), "costs_24h": store.costs_since(now - timedelta(hours=24)),
+            "max_positions": m.max_positions,
+            "positions": [_meme_position(p) for p in positions],
+            "closed": {
+                "count": len(closed),
+                "wins": sum(1 for p in closed if p.proceeds_usd > p.cost_usd),
+                "pnl": sum(p.proceeds_usd - p.cost_usd for p in closed),
+            },
+            "trades": [{k: _iso(t[k]) if k == "ts" else t[k] for k in trade_keys} for t in store.trades(limit=25)],
+            "decisions": [{**d, "ts": _iso(d["ts"])} for d in store.recent_decisions(60)],
+            "cycles": [{**c, "ts": _iso(c["ts"])} for c in cycles],
+            "last_cycle_minutes_ago": (now - cycles[0]["ts"]).total_seconds() / 60 if cycles else None,
+            "equity_curve": [[_iso(ts), value] for ts, value in curve],
+            "vets_24h": store.analyst_calls_since(now - timedelta(hours=24)), "vet_cap": m.max_vets_per_day,
+            "journal_tail": tail(state_dir / "memes.txt", 80),
+            "scheduler": scheduler() if scheduler else None,
+        }
+    finally:
+        store.close()
+
+
+def _meme_position(p) -> dict:
+    price = p.last_price_usd or p.entry_price_usd
+    return {
+        "symbol": p.symbol, "name": p.name, "mint": p.mint, "link": f"https://fomo.family/tokens/solana/{p.mint}",
+        "cost": p.cost_usd, "value": p.value_at(price), "change_pct": (price / p.entry_price_usd - 1) * 100,
+        "peak_pct": (p.peak_price_usd / p.entry_price_usd - 1) * 100, "take_profit_done": p.take_profit_done,
+        "opened_at": _iso(p.opened_at),
+    }
+
+
+def snapshot(state_dir: Path, settings: Settings, now: datetime, scheduler: Callable[[], dict | None],
+             memes_scheduler: Callable[[], dict | None] | None = None) -> dict:
     store = Store.open_readonly(state_dir / "desk.db")
     try:
         econ = economics(store, settings, now)
@@ -134,6 +195,7 @@ def snapshot(state_dir: Path, settings: Settings, now: datetime, scheduler: Call
             "log_tail": tail(state_dir / "desk.log", 40),
             "journal_tail": tail(state_dir / "trades.txt", 80),
             "scheduler": scheduler(),
+            "memes": memes_snapshot(state_dir, settings, now, memes_scheduler),
         }
     finally:
         store.close()
@@ -142,9 +204,11 @@ def snapshot(state_dir: Path, settings: Settings, now: datetime, scheduler: Call
 def make_server(
     state_dir: Path, settings: Settings, *, host: str = "127.0.0.1", port: int = 8765,
     scheduler: Callable[[], dict | None] | None = None, clock: Callable[[], datetime] | None = None,
+    memes_scheduler: Callable[[], dict | None] | None = None,
 ) -> ThreadingHTTPServer:
     page = resources.files("desk").joinpath("dashboard.html").read_bytes()
     ask_scheduler = scheduler or CachedScheduler()
+    ask_memes = memes_scheduler or CachedScheduler(lambda: windows_scheduler(task=MEMES_TASK))
     now = clock or (lambda: datetime.now(timezone.utc))
 
     class Handler(BaseHTTPRequestHandler):
@@ -158,7 +222,7 @@ def make_server(
                 self._send(200, "text/html; charset=utf-8", page)
             elif self.path == "/api/state":
                 try:
-                    body = json.dumps(snapshot(state_dir, settings, now(), ask_scheduler), ensure_ascii=False)
+                    body = json.dumps(snapshot(state_dir, settings, now(), ask_scheduler, ask_memes), ensure_ascii=False)
                     self._send(200, "application/json; charset=utf-8", body.encode("utf-8"))
                 except Exception as exc:  # noqa: BLE001 - show the error on the page instead of a dead socket
                     body = json.dumps({"error": f"{type(exc).__name__}: {exc}"}, ensure_ascii=False)
