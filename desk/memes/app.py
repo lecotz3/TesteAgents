@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field
+import time
+from contextlib import contextmanager
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -15,7 +17,7 @@ from desk.executor import LIVE_CONFIRMATION
 from desk.executor.base import ExecutionError
 from desk.journal import Journal, format_note
 from desk.lock import cycle_lock
-from desk.memes.cycle import PENDING_BUY, MemeDeps, run_meme_cycle, run_meme_exits
+from desk.memes.cycle import PENDING_BUY, MemeDeps, run_meme_cycle, run_meme_exits, run_meme_sell_all
 from desk.memes.executor import LiveMemeExecutor, MemeExecutor, PaperMemeExecutor, load_wallet, raw_usdc, usdc_raw
 from desk.memes.models import SOL_MINT, USDC_MINT
 from desk.memes.readiness import readiness
@@ -109,6 +111,18 @@ def _record_failure(app: MemesApp, message: str) -> None:
 def exit_lock(app: MemesApp):
     """Shared by the full cycle and the 1-minute exits run: only one of them sells at a time."""
     return cycle_lock(app.settings.state_dir / "memes-exits.lock", stale_after_seconds=600)
+
+
+@contextmanager
+def wait_for(lock, *, seconds: float, sleep=time.sleep, clock=time.monotonic):
+    """Like `lock()`, but keeps trying for a while: the 1-minute exits run holds the exit lock for a few seconds."""
+    deadline = clock() + seconds
+    while True:
+        with lock() as acquired:
+            if acquired or clock() >= deadline:
+                yield acquired
+                return
+        sleep(5)
 
 
 def build_deps(app: MemesApp, *, with_vetter: bool) -> MemeDeps:
@@ -205,6 +219,27 @@ def cmd_memes_status(app: MemesApp) -> int:
     return 0
 
 
+def cmd_memes_sell_all(app: MemesApp, yes: bool = False) -> int:
+    """Emergency: sell every open memecoin now and pause buying. Never asks Claude."""
+    positions = app.store.open_positions()
+    if not yes:
+        names = ", ".join(f"{p.symbol} (custo ${p.cost_usd:.2f})" for p in positions) or "nenhuma posição aberta"
+        print(f"Isto vende TUDO agora, a preço de mercado, e pausa as compras: {names}.")
+        print("Para confirmar: python -m desk memes-sell-all --yes")
+        return 1
+    try:
+        deps = build_deps(app, with_vetter=False)
+    except ConfigError as exc:
+        print(f"Erro de configuração: {exc}")
+        return 2
+    deps = replace(deps, exit_guard=lambda: wait_for(lambda: exit_lock(app), seconds=120))
+    report = run_meme_sell_all(deps)
+    print(f"Venda geral: {report.exits} venda(s); equity ${report.equity:.2f}. Compras pausadas até memes-resume.")
+    for error in report.errors:
+        print(f"  - {error}")
+    return 0 if not report.errors else 1
+
+
 def cmd_memes_resume(app: MemesApp) -> int:
     last = app.store.last_equity()
     equity = last if last is not None else app.store.cash()
@@ -287,7 +322,8 @@ def _verdict(ok: bool) -> int:
     return 0 if ok else 1
 
 
-def run_command(command: str, app: MemesApp) -> int:
-    handlers = {"memes": cmd_memes_cycle, "memes-exits": cmd_memes_exits, "memes-status": cmd_memes_status,
-                "memes-resume": cmd_memes_resume, "memes-live-check": cmd_memes_live_check}
-    return handlers[command](app)
+def run_command(command: str, app: MemesApp, **options) -> int:
+    handlers = {"memes": "cmd_memes_cycle", "memes-exits": "cmd_memes_exits", "memes-status": "cmd_memes_status",
+                "memes-resume": "cmd_memes_resume", "memes-live-check": "cmd_memes_live_check",
+                "memes-sell-all": "cmd_memes_sell_all"}
+    return globals()[handlers[command]](app, **options)

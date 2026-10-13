@@ -34,7 +34,7 @@ DEAD_VETTER_ALERT_CYCLES = 3
 EXIT_LABELS = {
     "stop_loss": "stop-loss", "take_profit": "realização de lucro", "trailing_stop": "stop móvel",
     "max_hold": "tempo máximo", "liquidity_drained": "liquidez sumindo",
-    "x_link_dead": "o post/perfil do X do token foi apagado",
+    "x_link_dead": "o post/perfil do X do token foi apagado", "manual": "venda geral pedida por você",
 }
 
 
@@ -132,6 +132,11 @@ def run_meme_cycle(deps: MemeDeps) -> MemeCycleReport:
     return _MemeCycle(deps).run()
 
 
+def run_meme_sell_all(deps: MemeDeps) -> MemeCycleReport:
+    """Emergency exit asked by the owner: sell every open position now and stop buying until memes-resume."""
+    return _MemeCycle(deps).sell_all()
+
+
 def run_meme_exits(deps: MemeDeps) -> MemeCycleReport:
     """The fast loop: prices, drawdown and exit rules only. Never discovers, never buys, never calls Claude."""
     return _MemeCycle(deps).run_exits()
@@ -178,6 +183,27 @@ class _MemeCycle:
         self.report.halted = self.store.is_halted()
         for error in self.report.errors:
             log.warning("memes (saídas): %s", error)
+        return self.report
+
+    def sell_all(self) -> MemeCycleReport:
+        self.store.set_halted(True)  # first, so no cycle buys while this runs
+        self.mark_held()
+        with self.d.exit_guard() as free:
+            if not free:
+                self.error("outra execução está vendendo agora; rode de novo em 1 minuto (as compras já estão pausadas)")
+            else:
+                for pos in self.store.open_positions():
+                    self.sell(pos, "manual", 1.0)
+        self.record_equity()
+        self.report.halted = True
+        left = self.store.open_positions()
+        summary = (f"{self.report.exits} posição(ões) vendida(s), {len(left)} ainda aberta(s)"
+                   + (f" ({', '.join(p.symbol for p in left)}: rode de novo)" if left else ""))
+        self.d.journal.append(format_note("VENDA GERAL (pedida por você)", f"{summary}. Compras pausadas.", self.now))
+        self.d.notifier.send(f"[{self.mode.upper()}] Venda geral: {summary}. Compras pausadas até "
+                             "python -m desk memes-resume.")
+        for error in self.report.errors:
+            log.warning("memes (venda geral): %s", error)
         return self.report
 
     # --- helpers --------------------------------------------------------------

@@ -231,6 +231,7 @@ Se a resposta de uma troca se perder, o agente pergunta de novo à Jupiter por a
 .venv\Scripts\python -m desk memes-status  # memecoins: banca, posições, últimos trades
 .venv\Scripts\python -m desk memes         # força um ciclo das memecoins agora
 .venv\Scripts\python -m desk memes-resume  # religa o agente de memecoins depois de desligado
+.venv\Scripts\python -m desk memes-sell-all --yes  # emergência: vende todas as memecoins agora e pausa as compras
 powershell -ExecutionPolicy Bypass -File scripts\uninstall_task.ps1   # desliga o agendador (as três tarefas)
 powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1     # liga de novo
 ```

@@ -656,3 +656,17 @@ def test_a_failed_rent_sweep_is_only_an_error(tmp_path, store):
     report = run_meme_cycle(deps(tmp_path, store, dex=FakeDex({}, discovered=[]), jup=jup,
                                  executor=RentExecutor(jup, raises=httpx.ConnectError("rpc down"))))
     assert any("aluguel" in e for e in report.errors)
+
+
+def test_sell_all_sells_every_position_now_and_pauses_buying(tmp_path, store):
+    from desk.memes.cycle import run_meme_sell_all
+
+    open_held(store)
+    open_held(store, mint=OTHER, symbol="OTHER")
+    notifier = CapturingNotifier()
+    dex = FakeDex({MINT: make_pair(price_usd=0.0016), OTHER: make_pair(mint=OTHER, symbol="OTHER", price_usd=0.0016)})
+    report = run_meme_sell_all(deps(tmp_path, store, dex=dex, notifier=notifier))
+    assert report.exits == 2 and store.open_positions() == [] and store.is_halted()
+    assert {p.close_reason for p in store.closed_positions()} == {"manual"}
+    assert any("Venda geral" in m for m in notifier.sent)
+    assert run_meme_cycle(deps(tmp_path, store, dex=dex, now=NOW + timedelta(minutes=3))).entries == 0

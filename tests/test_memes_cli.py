@@ -326,3 +326,54 @@ def test_status_lists_uncertain_buys_still_being_checked(app, capsys):
     assert memes_app.cmd_memes_status(app) == 0
     out = capsys.readouterr().out
     assert "Compras incertas" in out and "LOST" in out and "$3.00" in out
+
+
+def test_sell_all_needs_yes_and_changes_nothing_without_it(app, capsys):
+    pos = make_meme_position()
+    app.store.open_position(pos, MemeFill("BUY", pos.amount_raw, 3.0, 0.002), NOW, "x")
+    assert memes_app.cmd_memes_sell_all(app) == 1
+    out = capsys.readouterr().out
+    assert "--yes" in out and "SEALS" in out
+    assert len(app.store.open_positions()) == 1 and not app.store.is_halted()
+
+
+def test_sell_all_with_yes_runs_the_emergency_exit(app, monkeypatch, capsys):
+    seen = []
+    monkeypatch.setattr(memes_app, "run_meme_sell_all", lambda deps: seen.append(deps) or MemeCycleReport(exits=2))
+    assert memes_app.cmd_memes_sell_all(app, yes=True) == 0
+    assert seen and seen[0].vetter is None  # Claude is never asked during an emergency exit
+    assert "2 venda(s)" in capsys.readouterr().out
+
+
+def test_main_passes_yes_to_sell_all(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(memes_app, "cmd_memes_sell_all", lambda a, yes=False: seen.append(yes) or 0)
+    args = ["--config", str(write_config(tmp_path)), "--env-file", str(tmp_path / ".env"), "memes-sell-all"]
+    assert cli.main(args + ["--yes"]) == 0 and cli.main(args) == 0
+    assert seen == [True, False]
+
+
+def test_waiting_for_a_lock_retries_until_it_is_free():
+    from contextlib import contextmanager
+
+    answers, slept = [False, False, True], []
+
+    @contextmanager
+    def lock():
+        yield answers.pop(0)
+
+    with memes_app.wait_for(lock, seconds=60, sleep=slept.append) as free:
+        assert free
+    assert slept == [5, 5]
+
+
+def test_waiting_for_a_lock_gives_up_after_the_deadline():
+    from contextlib import contextmanager
+
+    @contextmanager
+    def lock():
+        yield False
+
+    clock = iter(range(0, 1000, 5))
+    with memes_app.wait_for(lock, seconds=12, sleep=lambda s: None, clock=lambda: next(clock)) as free:
+        assert not free
