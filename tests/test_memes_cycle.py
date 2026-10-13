@@ -670,3 +670,10 @@ def test_sell_all_sells_every_position_now_and_pauses_buying(tmp_path, store):
     assert {p.close_reason for p in store.closed_positions()} == {"manual"}
     assert any("Venda geral" in m for m in notifier.sent)
     assert run_meme_cycle(deps(tmp_path, store, dex=dex, now=NOW + timedelta(minutes=3))).entries == 0
+
+
+def test_the_reason_for_stopping_purchases_is_recorded(tmp_path, store):
+    from desk.memes.cycle import run_meme_sell_all
+
+    run_meme_sell_all(deps(tmp_path, store, dex=FakeDex({}, discovered=[])))
+    assert store.get_meta("halt_reason") == "manual"

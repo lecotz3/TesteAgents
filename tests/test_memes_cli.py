@@ -377,3 +377,10 @@ def test_waiting_for_a_lock_gives_up_after_the_deadline():
     clock = iter(range(0, 1000, 5))
     with memes_app.wait_for(lock, seconds=12, sleep=lambda s: None, clock=lambda: next(clock)) as free:
         assert not free
+
+
+def test_status_says_why_buying_is_paused(app, capsys):
+    app.store.set_halted(True)
+    app.store.set_meta("halt_reason", "manual")
+    memes_app.cmd_memes_status(app)
+    assert "Parado: SIM (venda geral pedida por você)" in capsys.readouterr().out

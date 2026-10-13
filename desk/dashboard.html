@@ -415,7 +415,10 @@ function renderMemes(m) {
   const alerts = document.getElementById("m-alerts");
   alerts.replaceChildren();
   const add = (text, bad) => alerts.append(el("div", { class: "alert" + (bad ? " bad" : ""), text }));
-  if (m.halted) add("O agente de memecoins está DESLIGADO: a banca caiu até a linha de corte. Ele não compra nem gasta, mas segue vendendo pelas regras. Para religar: python -m desk memes-resume", true);
+  if (m.halted) add(m.halt_reason === "manual"
+    ? "Compras das memecoins pausadas pela venda geral que você pediu. Para religar: python -m desk memes-resume"
+    : "O agente de memecoins está DESLIGADO: a banca caiu até a linha de corte. Ele não compra nem gasta, mas segue vendendo pelas regras. Para religar: python -m desk memes-resume", true);
+  for (const u of m.uncertain || []) add(`${u.kind === "compra" ? "Compra" : "Venda"} incerta de ${u.symbol} desde ${fmtTime(u.since)}: a resposta da Jupiter se perdeu e o agente está conferindo a carteira.`, true);
   if (m.scheduler && m.scheduler.installed === false) add("A tarefa das memecoins não está agendada: ele só roda quando você chama 'python -m desk memes'. Para ligar: scripts\\install_task.ps1");
   if (m.last_cycle_minutes_ago !== null && m.last_cycle_minutes_ago > 15) add(`Último ciclo das memecoins há ${Math.round(m.last_cycle_minutes_ago)} min.`);
   const lastCycle = m.cycles[0];

@@ -189,7 +189,9 @@ def cmd_memes_status(app: MemesApp) -> int:
     peak = store.peak()
     drawdown = (peak - equity) / peak if peak > 0 else 0.0
     kind = "compra e venda automáticas" if m.auto_trade else "só alertas"
-    print(f"Memecoins | modo: {m.mode} ({kind}) | Claude: {m.analyst} | Parado: {'SIM' if store.is_halted() else 'não'}")
+    reasons = {"manual": " (venda geral pedida por você)", "drawdown": " (queda até a linha de corte)"}
+    halted = f"SIM{reasons.get(store.get_meta('halt_reason') or '', '')}" if store.is_halted() else "não"
+    print(f"Memecoins | modo: {m.mode} ({kind}) | Claude: {m.analyst} | Parado: {halted}")
     print(f"Equity: ${equity:.2f} | Caixa: ${store.cash():.2f} | Pico: ${peak:.2f} | Queda: {drawdown:.1%} | "
           f"Desliga em: ${peak * (1 - m.drawdown_halt):.2f}")
     print(f"Custos: ${store.total_costs():.2f} (24h: ${store.costs_since(now - timedelta(hours=24)):.2f}) | "
@@ -244,6 +246,7 @@ def cmd_memes_resume(app: MemesApp) -> int:
     last = app.store.last_equity()
     equity = last if last is not None else app.store.cash()
     app.store.set_halted(False)
+    app.store.delete_meta("halt_reason")
     app.store.reset_peak(equity)
     note = f"Agente de memecoins religado manualmente. Novo pico de referência: ${equity:.2f}."
     app.journal.append(format_note("RETOMADA", note, utcnow()))

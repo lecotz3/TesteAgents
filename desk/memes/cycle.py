@@ -187,6 +187,7 @@ class _MemeCycle:
 
     def sell_all(self) -> MemeCycleReport:
         self.store.set_halted(True)  # first, so no cycle buys while this runs
+        self.store.set_meta("halt_reason", "manual")
         self.mark_held()
         with self.d.exit_guard() as free:
             if not free:
@@ -292,6 +293,7 @@ class _MemeCycle:
             return
         drawdown = (peak - equity) / peak
         self.store.set_halted(True)
+        self.store.set_meta("halt_reason", "drawdown")
         self.d.journal.append(format_note(
             f"POST-MORTEM MEMECOINS: queda de {drawdown:.0%} desde o pico", self.trade_summary(), self.now
         ))

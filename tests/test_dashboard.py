@@ -167,3 +167,22 @@ def test_server_serves_page_and_state(server):
 def test_server_rejects_foreign_host_header(server):
     # DNS rebinding: a web page on another site must not read the desk through the browser.
     assert httpx.get(base(server) + "/api/state", headers={"Host": "evil.example"}).status_code == 403
+
+
+def test_memes_snapshot_lists_uncertain_orders_and_why_buying_stopped(state):
+    add_memes(state)
+    store = MemeStore(state / "memes.db", start_cash=100.0)
+    try:
+        store.set_meta("pending_buy:" + "M" * 44, json.dumps({"symbol": "LOST", "usd": 3.0, "at": NOW.isoformat()}))
+        pos_id = store.open_positions()[0].id
+        store.set_meta(f"uncertain_sell:{pos_id}", json.dumps({"at": NOW.isoformat(), "reason": "stop_loss",
+                                                                "amount": 1, "price": 0.001}))
+        store.set_halted(True)
+        store.set_meta("halt_reason", "manual")
+    finally:
+        store.close()
+    memes = snapshot(state, Settings(), NOW, no_scheduler)["memes"]
+    assert memes["halt_reason"] == "manual"
+    kinds = {(u["kind"], u["symbol"]) for u in memes["uncertain"]}
+    assert kinds == {("compra", "LOST"), ("venda", "SEALS")}
+    json.dumps(memes)

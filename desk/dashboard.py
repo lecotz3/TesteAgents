@@ -13,6 +13,7 @@ from typing import Callable
 
 from desk.config import Settings
 from desk.economy import economics
+from desk.memes.cycle import PENDING_BUY, UNCERTAIN_SELL
 from desk.memes.readiness import readiness
 from desk.memes.store import MemeStore
 from desk.store import Store
@@ -130,10 +131,27 @@ def memes_snapshot(state_dir: Path, settings: Settings, now: datetime,
             "vets_24h": store.analyst_calls_since(now - timedelta(hours=24)), "vet_cap": m.max_vets_per_day,
             "journal_tail": tail(state_dir / "memes.txt", 80),
             "readiness": readiness(store, m, now).as_dict(),
+            "halt_reason": store.get_meta("halt_reason") if store.is_halted() else None,
+            "uncertain": _uncertain_orders(store, positions),
             "scheduler": scheduler() if scheduler else None,
         }
     finally:
         store.close()
+
+
+def _uncertain_orders(store: MemeStore, positions) -> list[dict]:
+    """Live orders whose answer was lost and that the agent is still checking against the wallet."""
+    symbols = {str(p.id): p.symbol for p in positions}
+    found = []
+    for prefix, kind in ((PENDING_BUY, "compra"), (UNCERTAIN_SELL, "venda")):
+        for key, raw in store.meta_with_prefix(prefix).items():
+            try:
+                data = json.loads(raw)
+            except ValueError:
+                data = {}
+            symbol = data.get("symbol") if kind == "compra" else symbols.get(key[len(prefix):])
+            found.append({"kind": kind, "symbol": symbol or "?", "since": data.get("at")})
+    return found
 
 
 def _meme_position(p) -> dict:
