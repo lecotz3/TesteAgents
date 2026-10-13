@@ -19,5 +19,12 @@ $daily = New-ScheduledTaskTrigger -Daily -At 9am
 Register-ScheduledTask -TaskName "PolymarketDeskMonthly" -Action $monthly -Trigger $daily -Settings $settings `
     -Description "Polymarket Desk: relatorio mensal (roda todo dia, relata 1x por mes)" -Force | Out-Null
 
-Write-Host "Tarefas registradas: PolymarketDesk (a cada 10 min) e PolymarketDeskMonthly (diaria, relata 1x por mes)."
+$memes = New-ScheduledTaskAction -Execute $pythonw -Argument "-m desk memes" -WorkingDirectory $repo
+$every3 = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) `
+    -RepetitionInterval (New-TimeSpan -Minutes 3) -RepetitionDuration ([TimeSpan]::FromDays(3650))
+Register-ScheduledTask -TaskName "PolymarketDeskMemes" -Action $memes -Trigger $every3 -Settings $settings `
+    -Description "Desk: agente de memecoins (Solana) a cada 3 min" -Force | Out-Null
+
+Write-Host "Tarefas registradas: PolymarketDesk (a cada 10 min), PolymarketDeskMemes (memecoins, a cada 3 min)"
+Write-Host "e PolymarketDeskMonthly (diaria, relata 1x por mes)."
 Write-Host "Para remover: powershell -ExecutionPolicy Bypass -File scripts\uninstall_task.ps1"
