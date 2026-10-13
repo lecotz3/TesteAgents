@@ -28,6 +28,7 @@ log = logging.getLogger("desk")
 UNCERTAIN_BLOCK_HOURS = 24  # until the user checks the wallet
 PENDING_BUY = "pending_buy:"  # meta key prefix of buys whose answer was lost, by mint
 PENDING_BUY_MINUTES = 10  # a lost buy that has not shown up in the wallet by then never landed
+GAP_ALERT_MINUTES = 15  # longer than this without any run means the PC slept or was off
 UNCERTAIN_SELL = "uncertain_sell:"  # meta key prefix of sells whose answer was lost, by position id
 DEAD_VETTER_ALERT_CYCLES = 3
 EXIT_LABELS = {
@@ -151,6 +152,7 @@ class _MemeCycle:
         self.mode = deps.executor.mode
 
     def run(self) -> MemeCycleReport:
+        self.check_gap()
         self.pay_rent()
         self.mark_held()
         self.check_drawdown()
@@ -166,6 +168,7 @@ class _MemeCycle:
         return self.report
 
     def run_exits(self) -> MemeCycleReport:
+        self.check_gap()
         self.mark_held()
         self.check_drawdown()
         self.manage_exits()
@@ -201,6 +204,20 @@ class _MemeCycle:
         if self.store.get_meta(key) is None:
             self.store.set_meta(key, self.now.isoformat())
             self.d.notifier.send(text)
+
+    def check_gap(self) -> None:
+        """The PC slept or was off with positions open: nobody watched the stops. Say so once, now that it is back."""
+        last, held = self.store.last_equity_ts(), self.store.open_positions()
+        if last is None or not held or self.now - last < timedelta(minutes=GAP_ALERT_MINUTES):
+            return
+        minutes = int((self.now - last).total_seconds() // 60)
+        log.warning("memes: %d min sem rodar com %d posição(ões) aberta(s)", minutes, len(held))
+        self.notify_once(
+            f"gap:{last.isoformat()}",
+            f"[{self.mode.upper()}] Memecoins: o agente ficou {minutes} min sem rodar (PC dormindo ou desligado?) com "
+            f"posições abertas ({', '.join(p.symbol for p in held)}): stops e saídas não foram vigiados nesse tempo. "
+            "Ele voltou e confere as saídas agora. Com dinheiro real, deixe o PC sem suspensão (docs/PENDENCIAS.md).",
+        )
 
     def pay_rent(self) -> None:
         today = self.now.date().isoformat()

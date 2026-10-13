@@ -31,7 +31,7 @@ O desk do Polymarket continua útil em **paper**: ele mede se o Claude acha dist
 Cada passo depende do anterior:
 
 1. **Telegram (C1).** Obrigatório: sem ele, o `memes-live-check` não libera o modo real. No modo real, um aviso de "compra incerta" ou "não conseguiu vender" exige que você confira a carteira.
-2. **Não deixar o PC dormir.** Hoje ele dorme depois de 3h parado, e dormindo o stop-loss não roda. Rode `powercfg /change standby-timeout-ac 0` (para desfazer, troque `0` por `180`). Deixe o PC na tomada, ligado e logado.
+2. **Não deixar o PC dormir.** Hoje ele dorme depois de 3h parado, e dormindo o stop-loss não roda. Rode `powercfg /change standby-timeout-ac 0` (para desfazer, troque `0` por `180`). Deixe o PC na tomada, ligado e logado. Se o agente ficar mais de 15 minutos sem rodar com posições abertas, ele avisa no Telegram quando voltar. Stop-loss na própria Jupiter (que rodaria com o PC desligado) exige no mínimo US$10 por ordem, e as compras aqui são de US$3; com uma banca bem maior isso passa a valer a pena.
 3. **Paper provando que se paga (D8).** Pelo menos 2 semanas e 30 compras e vendas fechadas, com resultado positivo **depois** dos custos. O painel mostra isso no cartão "Pronto p/ dinheiro real?" (também no `memes-status` e no relatório mensal). Se não passar, não ligue o real: o robô não tem vantagem e você descobriu de graça.
 4. **Carteira Solana dedicada (C4).** Carteira nova, só com a banca, mais ~0,05 SOL para taxas. Chave no `.env`, nunca no chat.
 5. **`memes-live-check` dizendo "PRONTO".** Ele confere: modo, as duas travas, chave válida, saldo de SOL e de USDC, e o Telegram.

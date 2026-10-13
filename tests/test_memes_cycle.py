@@ -580,3 +580,21 @@ def test_exits_wait_when_another_run_is_selling(tmp_path, store):
     d.exit_guard = busy
     assert run_meme_exits(d).exits == 0 and run_meme_cycle(d).exits == 0
     assert len(store.open_positions()) == 1
+
+
+def test_a_long_gap_with_open_positions_is_reported_once_when_the_agent_is_back(tmp_path, store):
+    open_held(store)
+    store.record_equity(NOW - timedelta(minutes=47), 100.0, 97.0, 3.0)
+    notifier = CapturingNotifier()
+    dex = FakeDex({MINT: make_pair(price_usd=0.0015, liquidity_usd=100_000.0)}, discovered=[])
+    for minutes in (0, 1):
+        run_meme_exits(deps(tmp_path, store, dex=dex, notifier=notifier, now=NOW + timedelta(minutes=minutes)))
+    gaps = [m for m in notifier.sent if "sem rodar" in m]
+    assert len(gaps) == 1 and "47 min" in gaps[0] and "SEALS" in gaps[0]
+
+
+def test_a_gap_without_positions_is_not_worth_an_alert(tmp_path, store):
+    store.record_equity(NOW - timedelta(hours=8), 100.0, 100.0, 0.0)
+    notifier = CapturingNotifier()
+    run_meme_exits(deps(tmp_path, store, dex=FakeDex({}, discovered=[]), notifier=notifier))
+    assert notifier.sent == []
