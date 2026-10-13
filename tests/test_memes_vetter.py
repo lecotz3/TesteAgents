@@ -49,3 +49,7 @@ def test_invalid_replies_are_analyst_errors(reply):
 def test_schema_is_strict():
     assert VET_SCHEMA["additionalProperties"] is False
     assert set(VET_SCHEMA["required"]) == set(VET_SCHEMA["properties"])
+
+
+def test_reasons_come_back_in_portuguese_for_the_dashboard():
+    assert "Brazilian Portuguese" in build_vet_prompt(make_pair(), make_safety(), NOW)
