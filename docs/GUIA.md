@@ -132,8 +132,11 @@ Segundo agente, com banca, registro e diário próprios (`state\memes.db`, `stat
 | Compra | Código | 3% da banca, até 4 tokens ao mesmo tempo |
 | Venda | Código | Stop -30%, metade ao dobrar, stop móvel de 30% do pico, liquidez caindo pela metade, 24h no máximo, e **vende tudo se o post/perfil do X do token for apagado** depois da compra |
 
+Ele roda em dois ritmos. A cada **3 minutos**, o ciclo completo descobre, filtra, consulta o Claude e compra. A cada **1 minuto**, uma rodada leve só confere preços e regras de saída, sem descobrir nem consultar o Claude, para o stop não esperar uma checagem do Claude terminar. As duas nunca vendem a mesma posição ao mesmo tempo.
+
 ```powershell
 .venv\Scripts\python -m desk memes             # um ciclo agora
+.venv\Scripts\python -m desk memes-exits       # só as saídas agora
 .venv\Scripts\python -m desk memes-status      # banca, posições, trades
 .venv\Scripts\python -m desk memes-live-check  # confere carteira e saldos do modo real (não negocia)
 .venv\Scripts\python -m desk memes-resume      # religa depois de desligado
@@ -143,6 +146,8 @@ Segundo agente, com banca, registro e diário próprios (`state\memes.db`, `stat
 - **Real:** fica atrás de duas travas: `[memes] mode = "live"` e `MEMES_LIVE=I_UNDERSTAND`. A chave da carteira dedicada (`MEMES_PRIVATE_KEY`) só assina a parte dela em cada transação, nunca é registrada no log e nunca chega ao Claude. Passo a passo: `docs/PENDENCIAS.md`, C4.
 - **Só alertas:** `auto_trade = false`. Ele manda os tokens aprovados no Telegram, com link do fomo.family, e você decide.
 - **Paga para existir:** cada checagem do Claude custa US$0,01. Caiu 40% do pico, é desligado: para de comprar e de gastar, mas segue vendendo pelas regras.
+- **Freio diário:** perdeu 15% da banca em 24h, pausa as compras até a queda das últimas 24h voltar abaixo disso (`daily_loss_pause_pct`). As vendas continuam.
+- **Parar na hora:** `enabled = false` na seção `[memes]` do `config.toml` para tudo (compras e vendas) a partir do próximo minuto. Para parar só as compras e manter as saídas, use `auto_trade = false`.
 - **Prova em paper:** o painel ("Pronto p/ dinheiro real?"), o `memes-status`, o `memes-live-check` e o relatório mensal mostram quantos dias, trades fechados e qual resultado depois dos custos o paper já tem. Meta: 14 dias, 30 trades e lucro.
 - **X sem custo, com limites:** a busca de menções no X é paga (a API oficial não tem plano grátis desde fev/2026). O código lê o que o próprio token divulga pelo FxTwitter (serviço gratuito, não oficial, que pode mudar) e o Claude procura menções pela busca da web. Se um dia quiser contagem de menções e autores, a fonte do X é uma interface (`XSource` em `desk/memes/x.py`): dá para plugar a API oficial ou o twitterapi.io sem mexer no resto.
 

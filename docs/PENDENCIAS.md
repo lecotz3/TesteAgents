@@ -8,8 +8,8 @@ Tudo que eu (Claude) não posso fazer por você: credenciais, dinheiro e decisõ
 
 | Item | Estado |
 |---|---|
-| Código | Pronto, 430 testes passando, na branch `feat/polymarket-desk` (PR #1 no GitHub) |
-| Agendador do Windows | **Ligado.** `PolymarketDesk` roda um ciclo a cada 10 min (paper); `PolymarketDeskMemes` roda as memecoins a cada 3 min (paper); `PolymarketDeskMonthly` roda todo dia e relata 1x por mês |
+| Código | Pronto, 438 testes passando, na branch `feat/polymarket-desk` (PR #1 no GitHub) |
+| Agendador do Windows | **Ligado.** `PolymarketDesk` roda um ciclo a cada 10 min (paper); `PolymarketDeskMemes` roda as memecoins a cada 3 min (paper); `PolymarketDeskMemesExits` confere as saídas das memecoins a cada 1 min; `PolymarketDeskMonthly` roda todo dia e relata 1x por mês |
 | Modo paper | Rodando sozinho: cada ciclo varre ~1000 mercados, ~470 passam no filtro, o Claude analisa até 3. Ainda sem entradas (nenhuma distorção ≥ 8pp) e sem erros |
 | Economia | O robô paga para existir: aluguel diário (assinatura rateada) + US$0,01 por análise, saindo do caixa dele. Se não lucrar mais que isso, é **desligado** na linha de 40% |
 | Painel | `scripts\dashboard.cmd` (duplo clique) ou `python -m desk dashboard` → http://127.0.0.1:8765 |
@@ -134,7 +134,8 @@ O agente de memecoins (`[memes]` no `config.toml`) já compra e vende sozinho **
 6. **Claude (só veta):** recebe os dados do X e busca na web e no X se o token é golpe, cópia, conta comprada ou propaganda paga. Veta quando acha sinal de alerta; falta de notícia sobre um token de poucas horas não é motivo. Ele nunca obriga uma compra.
 7. **Compra** 3% da banca (US$3 com US$100), no máximo 4 tokens ao mesmo tempo.
 8. **Vende** pelas regras: stop de -30%, metade ao dobrar, stop móvel de 30% abaixo do pico, liquidez caindo pela metade, 24h no máximo, ou na hora se o post/perfil do X do token for apagado.
-9. **Paga para existir:** cada checagem do Claude custa US$0,01 do caixa dele. Se cair 40% do pico, é **desligado**: para de comprar e de gastar, mas continua vendendo pelas regras.
+9. **Freios:** perdeu 15% em 24h, pausa as compras; caiu 40% do pico, é desligado. As saídas rodam a cada minuto mesmo com um freio ativo.
+10. **Paga para existir:** cada checagem do Claude custa US$0,01 do caixa dele. Se cair 40% do pico, é **desligado**: para de comprar e de gastar, mas continua vendendo pelas regras.
 
 Suas escolhas:
 - **Só alertas (opção B):** `auto_trade = false`. Ele manda no Telegram os tokens aprovados e você compra à mão no fomo.family, se quiser.
