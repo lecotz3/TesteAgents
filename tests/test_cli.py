@@ -155,3 +155,28 @@ def test_monthly_report_says_whether_it_paid_for_itself(app):
     app.store.record_equity(NOW, 80.0, 80.0, 0.0)
     cli.cmd_monthly(app, now=NOW)
     assert "custos $20.00" in app.notifier.sent[0] and "não se pagou" in app.notifier.sent[0]
+
+
+def test_dashboard_command_serves_on_localhost(app, monkeypatch, capsys):
+    served = {}
+
+    class FakeServer:
+        server_address = ("127.0.0.1", 8765)
+
+        def serve_forever(self):
+            served["yes"] = True
+
+        def server_close(self):
+            served["closed"] = True
+
+    def fake_make_server(state_dir, settings, **kwargs):
+        served["state_dir"] = state_dir
+        return FakeServer()
+
+    opened = []
+    monkeypatch.setattr(cli, "make_server", fake_make_server)
+    monkeypatch.setattr(cli.webbrowser, "open", opened.append)
+    assert cli.cmd_dashboard(app, port=8765, open_browser=True) == 0
+    assert served == {"state_dir": app.settings.state_dir, "yes": True, "closed": True}
+    assert opened == ["http://127.0.0.1:8765/"]
+    assert "http://127.0.0.1:8765/" in capsys.readouterr().out

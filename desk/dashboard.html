@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Polymarket Desk</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #17202a; --muted: #5f6b7a; --line: #e3e7ec;
+    --good: #12805c; --good-bg: #e3f5ee; --bad: #c0392b; --bad-bg: #fbe9e7; --warn: #a15c00; --warn-bg: #fff3dc;
+    --accent: #2457d6; --accent-bg: #e8eefc; --chart: #2457d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1419; --panel: #171e26; --text: #e6edf3; --muted: #93a1b0; --line: #26313c;
+      --good: #3fcf8e; --good-bg: #12342a; --bad: #ff7b72; --bad-bg: #3d1d1b; --warn: #f2b84b; --warn-bg: #3a2c12;
+      --accent: #79a6ff; --accent-bg: #1b2a44; --chart: #79a6ff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 16px 20px;
+           background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; }
+  h1 { font-size: 18px; margin: 0 8px 0 0; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  main { max-width: 1280px; margin: 0 auto; padding: 16px; display: grid; gap: 16px; }
+  .badge { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600;
+           background: var(--accent-bg); color: var(--accent); }
+  .badge.good { background: var(--good-bg); color: var(--good); }
+  .badge.bad { background: var(--bad-bg); color: var(--bad); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  .spacer { flex: 1; }
+  .muted { color: var(--muted); }
+  button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--text);
+           border-radius: 8px; padding: 5px 12px; cursor: pointer; }
+  .alerts { display: grid; gap: 8px; }
+  .alert { padding: 10px 14px; border-radius: 10px; background: var(--warn-bg); color: var(--warn); }
+  .alert.bad { background: var(--bad-bg); color: var(--bad); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .card, section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .card .value { font-size: 24px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .card .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .pos { color: var(--good); } .neg { color: var(--bad); }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+  .bar > div { height: 100%; background: var(--accent); }
+  .bar.danger > div { background: var(--bad); }
+  .grid2 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; white-space: nowrap; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  td.q { min-width: 220px; }
+  a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 8px; margin-bottom: 10px; }
+  .stat .n { font-size: 20px; font-weight: 700; } .stat .t { color: var(--muted); font-size: 12px; }
+  pre { margin: 0; max-height: 360px; overflow: auto; background: var(--bg); padding: 10px; border-radius: 8px;
+        font: 12px/1.4 ui-monospace, Consolas, monospace; white-space: pre-wrap; }
+  details summary { cursor: pointer; font-weight: 600; }
+  svg text { fill: var(--muted); font-size: 11px; }
+  .empty { color: var(--muted); padding: 8px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Polymarket Desk</h1>
+  <span id="b-mode" class="badge">…</span>
+  <span id="b-life" class="badge">…</span>
+  <span id="b-sched" class="badge">…</span>
+  <span class="spacer"></span>
+  <span id="updated" class="muted">carregando…</span>
+  <button id="refresh" type="button">Atualizar</button>
+</header>
+<main>
+  <div id="alerts" class="alerts"></div>
+  <div id="cards" class="cards"></div>
+  <div class="grid2">
+    <section>
+      <h2>Vida do robô (equity, 30 dias)</h2>
+      <div id="chart"></div>
+      <div class="muted" style="font-size:12px;margin-top:6px">
+        Linha tracejada vermelha: abaixo dela o robô é <b>desligado</b>. Cinza: banca inicial.
+      </div>
+    </section>
+    <section>
+      <h2>Último ciclo</h2>
+      <div id="last-cycle"></div>
+    </section>
+  </div>
+  <section>
+    <h2>O que o robô decidiu</h2>
+    <div class="table-wrap"><table id="decisions"></table></div>
+  </section>
+  <section>
+    <h2>Posições abertas</h2>
+    <div class="table-wrap"><table id="positions"></table></div>
+  </section>
+  <section>
+    <h2>Trades</h2>
+    <div class="table-wrap"><table id="trades"></table></div>
+  </section>
+  <section>
+    <h2>Ciclos recentes</h2>
+    <div class="table-wrap"><table id="cycles"></table></div>
+  </section>
+  <section>
+    <details><summary>Diário (trades.txt)</summary><pre id="journal"></pre></details>
+  </section>
+  <section>
+    <details><summary>Log técnico (desk.log)</summary><pre id="log"></pre></details>
+  </section>
+</main>
+<script>
+"use strict";
+const REFRESH_MS = 30000;
+const LABELS = {
+  entered: ["Entrou", "good"], buy_failed: ["Compra falhou", "bad"], book_unavailable: ["Livro indisponível", "warn"],
+  prefilter_no_edge: ["Sem vantagem", ""], low_confidence: ["Confiança baixa", ""],
+  no_official_source: ["Sem fonte oficial", ""], no_exit_condition: ["Sem condição de saída", ""],
+  empty_book: ["Livro vazio", ""], edge_below_min: ["Vantagem < mínimo", ""],
+  edge_below_min_after_depth: ["Vantagem some no livro", ""], insufficient_depth: ["Livro raso", ""],
+  exit_slippage: ["Saída cara", ""], below_min_order: ["Abaixo da ordem mínima", ""],
+  stale_analysis: ["Análise velha", "warn"], event_held: ["Evento já em carteira", ""],
+  daily_analysis_cap: ["Teto diário de análises", "warn"], daily_budget: ["Sem orçamento hoje", "warn"],
+  fair_value_changed: ["Valor justo mudou", ""], mispricing_closed: ["Distorção fechou", "good"],
+  resolving_soon: ["Perto da resolução", ""], settled: ["Resolvido", ""],
+};
+const ACTIONS = { BUY: "Compra", SELL: "Venda", SETTLE: "Liquidação" };
+const CONFIDENCE = { low: "baixa", medium: "média", high: "alta" };
+const usd = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "USD" });
+const fmtUsd = (x) => (x === null || x === undefined ? "—" : usd.format(x));
+const fmtSigned = (x) => (x > 0 ? "+" : "") + usd.format(x);
+const fmtPct = (x, d = 0) => (x === null || x === undefined ? "—" : (x * 100).toFixed(d).replace(".", ",") + "%");
+const fmtNum = (x, d = 2) => (x === null || x === undefined ? "—" : Number(x).toFixed(d).replace(".", ","));
+const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—");
+
+function el(tag, props = {}, children = []) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") node.className = v;
+    else if (k === "text") node.textContent = v;
+    else node.setAttribute(k, v);
+  }
+  for (const child of [].concat(children)) {
+    if (child === null || child === undefined) continue;
+    node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  }
+  return node;
+}
+const badge = (text, kind = "") => el("span", { class: "badge " + kind, text });
+const label = (code) => { const [t, k] = LABELS[code] || [code, ""]; return badge(t, k); };
+const signClass = (x) => (x > 0.004 ? "pos" : x < -0.004 ? "neg" : "");
+const marketLink = (question, slug) => slug
+  ? el("a", { href: "https://polymarket.com/market/" + encodeURIComponent(slug), target: "_blank", rel: "noopener noreferrer", text: question })
+  : el("span", { text: question });
+
+function table(target, headers, rows, empty) {
+  const t = document.getElementById(target);
+  t.replaceChildren();
+  if (!rows.length) { t.append(el("caption", { class: "empty", text: empty })); return; }
+  t.append(el("thead", {}, el("tr", {}, headers.map(([h, cls]) => el("th", { class: cls || "", text: h })))));
+  t.append(el("tbody", {}, rows.map((cells) => el("tr", {}, cells.map(([v, cls]) => el("td", { class: cls || "" }, v))))));
+}
+
+function card(title, value, sub, valueClass = "", barPct = null, danger = false) {
+  const c = el("div", { class: "card" }, [
+    el("div", { class: "label", text: title }),
+    el("div", { class: "value " + valueClass, text: value }),
+    sub ? el("div", { class: "sub", text: sub }) : null,
+  ]);
+  if (barPct !== null) {
+    const inner = el("div"); inner.style.width = Math.max(0, Math.min(100, barPct)) + "%";
+    c.append(el("div", { class: "bar" + (danger ? " danger" : "") }, inner));
+  }
+  return c;
+}
+
+function renderHeader(s) {
+  const mode = document.getElementById("b-mode");
+  mode.textContent = s.mode === "live" ? "DINHEIRO REAL" : "PAPER (simulação)";
+  mode.className = "badge " + (s.mode === "live" ? "bad" : "");
+  const life = document.getElementById("b-life");
+  life.textContent = s.halted ? "DESLIGADO" : "VIVO";
+  life.className = "badge " + (s.halted ? "bad" : "good");
+  const sched = document.getElementById("b-sched");
+  const sc = s.scheduler;
+  if (!sc) { sched.textContent = "Agendador: n/d"; sched.className = "badge"; }
+  else if (sc.installed === false) { sched.textContent = "Agendador: não instalado"; sched.className = "badge bad"; }
+  else if (sc.installed === null) { sched.textContent = "Agendador: ?"; sched.className = "badge warn"; }
+  else {
+    const next = sc.next_run ? new Date(sc.next_run).toLocaleTimeString("pt-BR", { timeStyle: "short" }) : "?";
+    sched.textContent = `Agendador: ${sc.state === "Running" ? "rodando agora" : "próximo ciclo " + next}`;
+    sched.className = "badge " + (sc.state === "Disabled" ? "warn" : "good");
+  }
+}
+
+function renderAlerts(s) {
+  const box = document.getElementById("alerts");
+  box.replaceChildren();
+  const add = (text, bad) => box.append(el("div", { class: "alert" + (bad ? " bad" : ""), text }));
+  if (s.halted) add("O robô está DESLIGADO: não se pagou (custos + perdas atingiram a linha de corte). Leia o post-mortem no diário e rode 'python -m desk resume' para religar.", true);
+  if (s.scheduler && s.scheduler.installed === false) add("O agendador não está instalado: o robô só roda quando você chama 'python -m desk cycle'. Para ligar: scripts\\install_task.ps1");
+  if (s.last_cycle_minutes_ago === null) add("Nenhum ciclo registrado ainda. O primeiro aparece aqui em até 10 minutos depois de ligar o agendador.");
+  else if (s.last_cycle_minutes_ago > 25) add(`Último ciclo há ${Math.round(s.last_cycle_minutes_ago)} min. O PC dormiu, a sessão do Windows fechou ou um ciclo está demorando.`);
+  const last = s.cycles[0];
+  if (last && last.errors && last.errors.length) add(`O último ciclo teve ${last.errors.length} erro(s); veja "Último ciclo".`);
+}
+
+function renderCards(s) {
+  const e = s.economics;
+  const cards = document.getElementById("cards");
+  cards.replaceChildren(
+    card("Equity", fmtUsd(e.equity), `${fmtSigned(e.net)} desde a banca inicial (${fmtUsd(e.bankroll_start)})`, signClass(e.net)),
+    card("Ganho operando", fmtSigned(e.trading_pnl), "resultado dos trades, antes dos custos", signClass(e.trading_pnl)),
+    card("Custo para existir", fmtUsd(e.costs_total), `24h: ${fmtUsd(e.costs_24h)} de ${fmtUsd(e.budget_24h)} permitidos`,
+         "", e.budget_24h > 0 ? (100 * e.costs_24h) / e.budget_24h : null),
+    card("Fôlego", e.runway_days === null ? "—" : `${Math.round(e.runway_days)} dias`,
+         `até ser desligado se não lucrar (linha ${fmtUsd(e.shutdown_line)})`, e.runway_days !== null && e.runway_days < 14 ? "neg" : ""),
+    card("Queda desde o pico", fmtPct(s.drawdown, 1), `desliga em ${fmtPct(s.drawdown_halt)} (pico ${fmtUsd(s.peak)})`,
+         s.drawdown > s.drawdown_halt / 2 ? "neg" : "", (100 * s.drawdown) / s.drawdown_halt, true),
+    card("Posições abertas", `${s.positions.length}/${s.max_positions}`, `caixa livre ${fmtUsd(s.cash)}`),
+    card("Trades fechados", String(s.closed.count), s.closed.count ? `${s.closed.wins} com lucro, total ${fmtSigned(s.closed.pnl)}` : "nenhum ainda",
+         signClass(s.closed.pnl)),
+    card("Análises (24h)", `${s.analyst_calls_24h}/${s.analyst_cap}`, `analista: ${s.analyst}`, "", (100 * s.analyst_calls_24h) / s.analyst_cap),
+  );
+}
+
+function renderChart(s) {
+  const box = document.getElementById("chart");
+  box.replaceChildren();
+  const pts = s.equity_curve.map(([t, v]) => [new Date(t).getTime(), v]);
+  if (pts.length < 2) { box.append(el("div", { class: "empty", text: "Sem histórico suficiente ainda: cada ciclo adiciona um ponto." })); return; }
+  const W = 800, H = 240, L = 64, R = 10, T = 12, B = 26;
+  const e = s.economics;
+  const ys = pts.map((p) => p[1]).concat([e.shutdown_line, e.bankroll_start]);
+  let lo = Math.min(...ys), hi = Math.max(...ys);
+  const pad = (hi - lo) * 0.08 || 1; lo -= pad; hi += pad;
+  const t0 = pts[0][0], t1 = pts[pts.length - 1][0] || t0 + 1;
+  const x = (t) => L + ((t - t0) / (t1 - t0 || 1)) * (W - L - R);
+  const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("width", "100%"); svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", "Gráfico da equity do robô");
+  const line = (y0, color, dash) => {
+    const l = document.createElementNS(ns, "line");
+    Object.entries({ x1: L, x2: W - R, y1: y0, y2: y0, stroke: color, "stroke-width": 1.5, "stroke-dasharray": dash || "" })
+      .forEach(([k, v]) => l.setAttribute(k, v));
+    svg.append(l);
+  };
+  const text = (tx, ty, str, anchor = "end") => {
+    const t = document.createElementNS(ns, "text");
+    t.setAttribute("x", tx); t.setAttribute("y", ty); t.setAttribute("text-anchor", anchor); t.textContent = str; svg.append(t);
+  };
+  const css = getComputedStyle(document.documentElement);
+  line(y(e.bankroll_start), css.getPropertyValue("--muted"), "2 4");
+  line(y(e.shutdown_line), css.getPropertyValue("--bad"), "6 4");
+  text(L - 6, y(hi - pad) + 4, fmtUsd(hi - pad)); text(L - 6, y(lo + pad) + 4, fmtUsd(lo + pad));
+  text(L - 6, y(e.shutdown_line) + 4, fmtUsd(e.shutdown_line));
+  text(L, H - 6, fmtTime(new Date(t0).toISOString()), "start"); text(W - R, H - 6, fmtTime(new Date(t1).toISOString()));
+  const poly = document.createElementNS(ns, "polyline");
+  poly.setAttribute("points", pts.map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(" "));
+  poly.setAttribute("fill", "none"); poly.setAttribute("stroke", css.getPropertyValue("--chart")); poly.setAttribute("stroke-width", 2.2);
+  svg.append(poly);
+  box.append(svg);
+}
+
+function renderLastCycle(s) {
+  const box = document.getElementById("last-cycle");
+  box.replaceChildren();
+  const c = s.cycles[0];
+  if (!c) { box.append(el("div", { class: "empty", text: "Nenhum ciclo ainda." })); return; }
+  const stat = (n, t) => el("div", { class: "stat" }, [el("div", { class: "n", text: String(n ?? 0) }), el("div", { class: "t", text: t })]);
+  box.append(
+    el("div", { class: "muted", text: `${fmtTime(c.ts)} (há ${Math.round(s.last_cycle_minutes_ago)} min)` }),
+    el("div", { class: "stats" }, [stat(c.scanned, "varridos"), stat(c.candidates, "candidatos"), stat(c.analyzed, "analisados"),
+      stat(c.entries, "entradas"), stat(c.exits, "saídas"), stat(c.settled, "liquidados")]),
+  );
+  const skips = Object.entries(c.skips || {});
+  box.append(el("div", { class: "muted", text: "Por que não entrou:" }));
+  box.append(skips.length ? el("div", { class: "chips" }, skips.map(([k, n]) => { const b = label(k); b.textContent += ` × ${n}`; return b; }))
+                          : el("div", { class: "empty", text: "nada para pular" }));
+  if (c.errors && c.errors.length) {
+    box.append(el("div", { class: "muted", text: "Erros:", style: "margin-top:8px" }));
+    box.append(el("pre", {}, c.errors.join("\n")));
+  }
+}
+
+function render(s) {
+  renderHeader(s); renderAlerts(s); renderCards(s); renderChart(s); renderLastCycle(s);
+  table("decisions", [["Quando"], ["Mercado"], ["Preço", "num"], ["Justo (Claude)", "num"], ["Vantagem", "num"], ["Confiança"], ["Decisão"], ["Detalhe"]],
+    s.decisions.map((d) => [[fmtTime(d.ts)], [marketLink(d.question, d.slug), "q"], [fmtPct(d.price), "num"], [fmtPct(d.fair_prob), "num"],
+      [`${fmtNum(d.edge_pp, 1)} pp`, "num"], [CONFIDENCE[d.confidence] || d.confidence || "—"], [label(d.decision)], [d.detail || ""]]),
+    "Nenhuma decisão registrada ainda: aparecem aqui os mercados que o Claude analisou e o que o robô fez com cada um.");
+  table("positions", [["Mercado"], ["Lado"], ["Cotas", "num"], ["Entrada", "num"], ["Custo", "num"], ["Justo na entrada", "num"], ["Sair até"], ["Condição de saída"]],
+    s.positions.map((p) => [[marketLink(p.question, p.slug), "q"], [p.outcome], [fmtNum(p.shares), "num"], [fmtPct(p.avg_price, 1), "num"],
+      [fmtUsd(p.cost), "num"], [fmtPct(p.entry_fair_prob), "num"], [fmtTime(p.deadline)], [p.exit_condition]]),
+    "Nenhuma posição aberta.");
+  table("trades", [["Quando"], ["Mercado"], ["Ação"], ["Cotas", "num"], ["Preço", "num"], ["Taxa", "num"], ["Caixa", "num"], ["Motivo"]],
+    s.trades.map((t) => [[fmtTime(t.ts)], [t.question, "q"], [ACTIONS[t.action] || t.action], [fmtNum(t.shares), "num"],
+      [fmtPct(t.price, 1), "num"], [fmtUsd(t.fee), "num"], [el("span", { class: signClass(t.cash_delta), text: fmtSigned(t.cash_delta) }), "num"],
+      [LABELS[t.reason] ? label(t.reason) : t.reason]]),
+    "Nenhum trade ainda.");
+  table("cycles", [["Quando"], ["Varridos", "num"], ["Candidatos", "num"], ["Analisados", "num"], ["Entradas", "num"], ["Saídas", "num"], ["Equity", "num"], ["Erros", "num"]],
+    s.cycles.map((c) => [[fmtTime(c.ts)], [c.scanned ?? 0, "num"], [c.candidates ?? 0, "num"], [c.analyzed ?? 0, "num"], [c.entries ?? 0, "num"],
+      [c.exits ?? 0, "num"], [fmtUsd(c.equity), "num"], [(c.errors || []).length, "num"]]),
+    "Nenhum ciclo ainda.");
+  document.getElementById("journal").textContent = s.journal_tail.join("\n") || "(vazio: o diário recebe entradas, saídas e relatórios)";
+  document.getElementById("log").textContent = s.log_tail.join("\n") || "(vazio)";
+}
+
+async function refresh() {
+  const updated = document.getElementById("updated");
+  try {
+    const resp = await fetch("/api/state", { cache: "no-store" });
+    const data = await resp.json();
+    if (!resp.ok || data.error) throw new Error(data.error || resp.status);
+    render(data);
+    updated.textContent = "atualizado às " + new Date().toLocaleTimeString("pt-BR");
+  } catch (err) {
+    updated.textContent = "falha ao atualizar: " + err.message;
+  }
+}
+document.getElementById("refresh").addEventListener("click", refresh);
+refresh();
+setInterval(refresh, REFRESH_MS);
+</script>
+</body>
+</html>

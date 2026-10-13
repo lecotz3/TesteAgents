@@ -5,6 +5,7 @@ import argparse
 import json
 import logging
 import sys
+import webbrowser
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
@@ -19,6 +20,7 @@ from desk.config import ConfigError, Secrets, Settings, load_secrets, load_setti
 from desk.cycle import Deps, run_cycle
 from desk.executor import LIVE_CONFIRMATION, make_executor
 from desk.executor.base import ExecutionError
+from desk.dashboard import make_server
 from desk.economy import economics
 from desk.executor.sdk import SdkTrader
 from desk.gamma import GammaClient
@@ -251,6 +253,25 @@ def cmd_live_check(app: App) -> int:
     return 0 if ok else 1
 
 
+def cmd_dashboard(app: App, port: int = 8765, open_browser: bool = True) -> int:
+    try:
+        server = make_server(app.settings.state_dir, app.settings, port=port)
+    except OSError as exc:
+        print(f"Não consegui abrir a porta {port} ({exc}). O painel já está aberto? Tente --port 8766.")
+        return 2
+    url = f"http://127.0.0.1:{server.server_address[1]}/"
+    print(f"Painel em {url} (só nesta máquina). Feche esta janela ou aperte Ctrl+C para parar.")
+    if open_browser:
+        webbrowser.open(url)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -266,6 +287,9 @@ def main(argv: list[str] | None = None) -> int:
     analyze = sub.add_parser("analyze", help="roda o analista em um mercado (id ou slug), sem operar")
     analyze.add_argument("market")
     sub.add_parser("live-check", help="verifica se o modo real está pronto (não envia ordens)")
+    dashboard = sub.add_parser("dashboard", help="abre o painel local no navegador (só leitura)")
+    dashboard.add_argument("--port", type=int, default=8765)
+    dashboard.add_argument("--no-browser", action="store_true", help="não abre o navegador sozinho")
     args = parser.parse_args(argv)
 
     try:
@@ -285,6 +309,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_resume(app)
         if args.command == "analyze":
             return cmd_analyze(app, args.market)
+        if args.command == "dashboard":
+            return cmd_dashboard(app, port=args.port, open_browser=not args.no_browser)
         return cmd_live_check(app)
     finally:
         app.store.close()
