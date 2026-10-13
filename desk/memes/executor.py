@@ -56,6 +56,8 @@ class MemeExecutor(Protocol):
 
     def wallet_balance(self, mint: str) -> int: ...
 
+    def sol_balance(self) -> float: ...
+
     def reclaim_rent(self) -> int: ...
 
 
@@ -94,6 +96,9 @@ class PaperMemeExecutor:
 
     def wallet_balance(self, mint: str) -> int:
         return 0  # paper has no wallet, and its fills are never uncertain
+
+    def sol_balance(self) -> float:
+        return float("inf")
 
     def reclaim_rent(self) -> int:
         return 0
@@ -215,6 +220,9 @@ class LiveMemeExecutor:
 
     def wallet_balance(self, mint: str) -> int:
         return self._rpc.token_balance(self.owner, mint)
+
+    def sol_balance(self) -> float:
+        return self._rpc.sol_balance(self.owner)
 
     def reclaim_rent(self, limit: int = 10) -> int:
         """Every token bought opens an account that holds ~0.0015 SOL of rent. Once a sell empties it, closing it

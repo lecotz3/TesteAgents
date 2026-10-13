@@ -217,8 +217,9 @@ def test_cycle_is_recorded_with_equity(tmp_path, store):
 class LiveLikeExecutor(PaperMemeExecutor):
     mode = "live"
 
-    def __init__(self, jup, *, funds=None, wallet_amount=None, buy_raises=None, balance=0, sell_raises=None):
+    def __init__(self, jup, *, funds=None, wallet_amount=None, buy_raises=None, balance=0, sell_raises=None, sol=1.0):
         super().__init__(jup, network_fee_usd=0.002)
+        self.sol = sol
         self.funds, self.wallet_amount, self.buy_raises, self.balance = funds, wallet_amount, buy_raises, balance
         self.sell_raises, self.sells, self.min_outs = sell_raises, 0, []
 
@@ -227,6 +228,9 @@ class LiveLikeExecutor(PaperMemeExecutor):
         if self.sell_raises:
             raise self.sell_raises
         return super().sell(mint, amount_raw)
+
+    def sol_balance(self):
+        return self.sol
 
     def wallet_balance(self, mint):
         if isinstance(self.balance, Exception):
@@ -621,11 +625,23 @@ def test_low_sol_while_holding_positions_is_alerted_once_a_day(tmp_path, store):
     open_held(store)
     jup, notifier = FakeJupiter(), CapturingNotifier()
     dex = FakeDex({MINT: make_pair(price_usd=0.0015, liquidity_usd=100_000.0)}, discovered=[])
-    for minutes in (0, 3):
+    for minutes, sol in ((0, 0.03), (3, 0.005), (6, 0.005)):  # 0.03 SOL still pays thousands of sells
         run_meme_cycle(deps(tmp_path, store, dex=dex, jup=jup, notifier=notifier, now=NOW + timedelta(minutes=minutes),
-                            executor=LiveLikeExecutor(jup, funds="wallet_sol_short")))
+                            executor=LiveLikeExecutor(jup, sol=sol)))
+        if minutes == 0:
+            assert not [m for m in notifier.sent if "SOL" in m]
     alerts = [m for m in notifier.sent if "SOL" in m]
     assert len(alerts) == 1 and "vendas" in alerts[0]
+
+
+def test_a_malformed_uncertain_buy_record_never_breaks_the_exits(tmp_path, store):
+    import json
+
+    store.set_meta("pending_buy:" + MINT, json.dumps({"symbol": "LOST", "usd": 3.0, "at": NOW.isoformat()}))
+    jup = FakeJupiter()
+    report = run_meme_exits(deps(tmp_path, store, dex=FakeDex({}, discovered=[]), jup=jup,
+                                 executor=LiveLikeExecutor(jup, balance=5)))
+    assert report.errors and store.meta_with_prefix("pending_buy:") == {} and store.open_positions() == []
 
 
 class RentExecutor(LiveLikeExecutor):
@@ -677,3 +693,17 @@ def test_the_reason_for_stopping_purchases_is_recorded(tmp_path, store):
 
     run_meme_sell_all(deps(tmp_path, store, dex=FakeDex({}, discovered=[])))
     assert store.get_meta("halt_reason") == "manual"
+
+
+def test_a_crash_while_checking_uncertain_orders_never_blocks_the_stops(tmp_path, store):
+    import json
+
+    open_held(store)
+    store.set_meta("pending_buy:" + OTHER, json.dumps({"symbol": "LOST", "name": "Lost", "decimals": 6, "usd": 3.0,
+                                                       "at": NOW.isoformat(), "liquidity_usd": 1.0}))
+    jup = FakeJupiter(prices={MINT: 0.0010})
+    dex = FakeDex({MINT: make_pair(price_usd=0.0010, liquidity_usd=100_000.0)}, discovered=[])
+    report = run_meme_exits(deps(tmp_path, store, dex=dex, jup=jup,
+                                 executor=LiveLikeExecutor(jup, balance=RuntimeError("bug"))))
+    assert store.closed_positions()[0].close_reason == "stop_loss"  # the stop still fired
+    assert any("incertas" in e for e in report.errors)

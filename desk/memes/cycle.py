@@ -28,6 +28,7 @@ log = logging.getLogger("desk")
 UNCERTAIN_BLOCK_HOURS = 24  # until the user checks the wallet
 PENDING_BUY = "pending_buy:"  # meta key prefix of buys whose answer was lost, by mint
 PENDING_BUY_MINUTES = 10  # a lost buy that has not shown up in the wallet by then never landed
+SELL_SOL_RESERVE = 0.01  # below this, sells may not pay their own fees (buys need min_sol_balance)
 GAP_ALERT_MINUTES = 15  # longer than this without any run means the PC slept or was off
 UNCERTAIN_SELL = "uncertain_sell:"  # meta key prefix of sells whose answer was lost, by position id
 DEAD_VETTER_ALERT_CYCLES = 3
@@ -308,13 +309,13 @@ class _MemeCycle:
         if self.mode != "live" or not self.store.open_positions():
             return
         try:
-            problem = self.d.executor.funds_problem(0.0)
+            sol = self.d.executor.sol_balance()
         except FETCH_ERRORS:
             return
-        if problem == "wallet_sol_short":
+        if sol < SELL_SOL_RESERVE:
             self.notify_once(
                 f"sol_low:{self.now.date()}",
-                f"[LIVE] Pouco SOL na carteira das memecoins (mínimo {self.s.min_sol_balance:g} SOL) com posições abertas. "
+                f"[LIVE] Só {sol:.4f} SOL na carteira das memecoins com posições abertas (mínimo {SELL_SOL_RESERVE:g}). "
                 "Sem SOL para as taxas, a Jupiter só oferece trocas gasless, que recusam valores pequenos e cobram taxa "
                 "alta: as vendas podem falhar. Mande SOL para a carteira.",
             )
@@ -371,8 +372,14 @@ class _MemeCycle:
             if not free:
                 log.info("memes: outra execução está vendendo agora; saídas ficam para ela")
                 return
-            self.adopt_uncertain_buys()
-            waiting = self.settle_uncertain_sells()
+            try:
+                self.adopt_uncertain_buys()
+                waiting = self.settle_uncertain_sells()
+            except Exception as exc:  # noqa: BLE001 - checking lost orders must never stop the stops
+                log.exception("memes: conferência de ordens incertas falhou")
+                self.error(f"conferência de ordens incertas falhou: {type(exc).__name__}: {exc}")
+                waiting = {int(k[len(UNCERTAIN_SELL):]) for k in self.store.meta_with_prefix(UNCERTAIN_SELL)
+                           if k[len(UNCERTAIN_SELL):].isdigit()}  # still no second order for those
             self._manage_exits(skip=waiting)
 
     def adopt_uncertain_buys(self) -> None:
@@ -382,8 +389,11 @@ class _MemeCycle:
             try:
                 pending = json.loads(raw)
                 at = datetime.fromisoformat(pending["at"])
+                float(pending["usd"]), int(pending["decimals"]), float(pending["liquidity_usd"])
+                str(pending["symbol"]), str(pending["name"])
             except (ValueError, KeyError, TypeError):
-                self.store.delete_meta(key)
+                self.store.delete_meta(key)  # unreadable: never let it break the exits of every other position
+                self.error(f"registro de compra incerta ilegível descartado ({mint}); confira a carteira")
                 continue
             try:
                 held = self.d.executor.wallet_balance(mint)
