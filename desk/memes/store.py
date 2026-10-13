@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS positions (
     decimals INTEGER NOT NULL, amount_raw TEXT NOT NULL, cost_usd REAL NOT NULL, entry_price_usd REAL NOT NULL,
     peak_price_usd REAL NOT NULL, entry_liquidity_usd REAL NOT NULL, opened_at TEXT NOT NULL,
     take_profit_done INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'open', closed_at TEXT,
-    proceeds_usd REAL NOT NULL DEFAULT 0, close_reason TEXT
+    proceeds_usd REAL NOT NULL DEFAULT 0, close_reason TEXT, last_price_usd REAL
 );
 CREATE TABLE IF NOT EXISTS trades (
     id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, position_id INTEGER NOT NULL, mint TEXT NOT NULL,
@@ -85,9 +85,12 @@ class MemeStore(Ledger):
                 (_iso(ts), reason, pos.id),
             )
 
-    def update_peak(self, pos_id: int, peak: float) -> None:
+    def mark_price(self, pos_id: int, price: float) -> None:
         with self._db:
-            self._db.execute("UPDATE positions SET peak_price_usd = ? WHERE id = ?", (peak, pos_id))
+            self._db.execute(
+                "UPDATE positions SET last_price_usd = ?, peak_price_usd = MAX(peak_price_usd, ?) WHERE id = ?",
+                (price, price, pos_id),
+            )
 
     def open_positions(self) -> list[MemePosition]:
         return self._positions("open")
@@ -104,7 +107,7 @@ class MemeStore(Ledger):
                 peak_price_usd=r["peak_price_usd"], entry_liquidity_usd=r["entry_liquidity_usd"],
                 opened_at=_dt(r["opened_at"]), take_profit_done=bool(r["take_profit_done"]), id=r["id"],
                 status=r["status"], closed_at=_dt(r["closed_at"]), proceeds_usd=r["proceeds_usd"],
-                close_reason=r["close_reason"],
+                close_reason=r["close_reason"], last_price_usd=r["last_price_usd"],
             )
             for r in rows
         ]

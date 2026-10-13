@@ -67,11 +67,14 @@ def test_write_off_closes_without_cash(store):
     assert store.closed_positions()[0].close_reason == "missing_in_wallet"
 
 
-def test_peak_updates(store):
+def test_mark_price_tracks_last_price_and_raises_peak_only(store):
     store.open_position(make_meme_position(), buy_fill(), NOW, "x")
     pos = store.open_positions()[0]
-    store.update_peak(pos.id, 0.004)
-    assert store.open_positions()[0].peak_price_usd == 0.004
+    assert pos.last_price_usd is None
+    store.mark_price(pos.id, 0.004)
+    store.mark_price(pos.id, 0.003)
+    after = store.open_positions()[0]
+    assert after.peak_price_usd == 0.004 and after.last_price_usd == 0.003
 
 
 def test_vets_roundtrip(store):

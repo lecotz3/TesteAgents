@@ -90,6 +90,7 @@ class MemePosition:
     closed_at: datetime | None = None
     proceeds_usd: float = 0.0
     close_reason: str | None = None
+    last_price_usd: float | None = None  # last DexScreener price seen
 
     def tokens(self) -> float:
         return self.amount_raw / 10 ** self.decimals

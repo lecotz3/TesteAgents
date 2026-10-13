@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from desk.memes.models import MemePosition, Pair, Safety
+from desk.memes.models import MemePosition, Pair, Quote, Safety
 from tests.factories import NOW
 
 MINT = "3sKaoPryg4KrXubLWtoqF7MznLT7QNqKRxMMkkxTpump"
@@ -82,3 +82,55 @@ def make_meme_position(**overrides) -> MemePosition:
     )
     base.update(overrides)
     return MemePosition(**base)
+
+
+class FakeDex:
+    def __init__(self, pairs: dict[str, Pair] | None = None, discovered: list[str] | None = None, fail=None):
+        self.by_mint = dict(pairs or {})
+        self.discovered = list(self.by_mint) if discovered is None else discovered
+        self.fail = fail
+        self.pair_calls: list[list[str]] = []
+
+    def discover(self) -> list[str]:
+        if self.fail:
+            raise self.fail
+        return list(self.discovered)
+
+    def pairs(self, mints: list[str]) -> dict[str, Pair]:
+        if self.fail:
+            raise self.fail
+        self.pair_calls.append(list(mints))
+        return {m: self.by_mint[m] for m in mints if m in self.by_mint}
+
+
+class FakeRug:
+    def __init__(self, reports: dict[str, Safety] | None = None, default: Safety | None = None):
+        self.reports = reports or {}
+        self.default = default or make_safety()
+        self.calls: list[str] = []
+
+    def report(self, mint: str) -> Safety:
+        self.calls.append(mint)
+        return self.reports.get(mint, self.default)
+
+
+class FakeJupiter:
+    """Quotes at a fixed USD price per token, losing `loss` of the value on each leg."""
+
+    def __init__(self, prices: dict[str, float] | None = None, decimals: int = 6, leg_loss: float = 0.01,
+                 impact_pct: float = 0.3, no_route: set[str] = frozenset()):
+        self.prices = prices or {}
+        self.decimals, self.leg_loss, self.impact, self.no_route = decimals, leg_loss, impact_pct, set(no_route)
+        self.calls: list[tuple[str, str, int]] = []
+
+    def quote(self, input_mint: str, output_mint: str, amount: int) -> Quote | None:
+        self.calls.append((input_mint, output_mint, amount))
+        token = output_mint if input_mint == USDC else input_mint
+        if token in self.no_route:
+            return None
+        price = self.prices.get(token, 0.0015)
+        if input_mint == USDC:
+            out = amount / 1e6 / price * 10 ** self.decimals * (1 - self.leg_loss)
+        else:
+            out = amount / 10 ** self.decimals * price * 1e6 * (1 - self.leg_loss)
+        return Quote(in_amount=amount, out_amount=int(out), price_impact_pct=self.impact, fee_bps=10)

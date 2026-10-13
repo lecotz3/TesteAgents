@@ -72,6 +72,8 @@ class MemesSettings(BaseModel):
 
     enabled: bool = True
     mode: Literal["paper", "live"] = "paper"
+    auto_trade: bool = True  # False = alerts only: it sends approved tokens and you decide (option B)
+    notify_paper_trades: bool = True
     bankroll_start_usd: float = Field(100.0, gt=0)
     # market filters (DexScreener)
     min_liquidity_usd: float = Field(50_000.0, ge=0)
@@ -96,7 +98,11 @@ class MemesSettings(BaseModel):
     max_round_trip_loss: float = Field(0.05, gt=0, lt=1)
     max_price_impact_pct: float = Field(2.0, gt=0)
     max_candidates_checked: int = Field(8, ge=1)  # RugCheck/Jupiter calls per cycle stay polite
+    max_price_mismatch_pct: float = Field(25.0, gt=0)  # quote vs DexScreener price: catches stale data or decimals
     network_fee_usd: float = Field(0.002, ge=0)  # per transaction, paper estimate
+    min_sol_balance: float = Field(0.01, ge=0)  # live: SOL kept in the wallet for network fees
+    rpc_url: str = "https://api.mainnet-beta.solana.com"
+    rejection_block_hours: float = Field(6.0, ge=0)  # do not re-check a rejected token before this
     # exits
     stop_loss_pct: float = Field(30.0, gt=0, lt=100)
     take_profit_pct: float = Field(100.0, gt=0)
@@ -110,6 +116,7 @@ class MemesSettings(BaseModel):
     analyst: Literal["claude", "none"] = "claude"
     cost_per_vet_usd: float = Field(0.01, ge=0)
     max_vets_per_day: int = Field(30, ge=0)
+    vet_block_hours: float = Field(24.0, ge=0)
     daily_rent_usd: float = Field(0.0, ge=0)
     drawdown_halt: float = Field(0.40, gt=0, lt=1)
 

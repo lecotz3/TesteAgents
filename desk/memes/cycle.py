@@ -1,0 +1,487 @@
+"""One pass of the memecoin loop: mark, drawdown, exits, then discover → filter → safety → quote → vet → buy."""
+from __future__ import annotations
+
+import logging
+import math
+from collections import Counter
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from typing import Callable, Protocol
+
+from desk.analyst.base import AnalystError
+from desk.config import MemesSettings
+from desk.executor.base import ExecutionError, ExecutionUncertain
+from desk.journal import Journal, format_note
+from desk.memes.executor import MemeExecutor, usdc_raw
+from desk.memes.models import USDC_MINT, MemeFill, MemePosition, Pair, Quote, Safety
+from desk.memes.rules import exit_decision, market_rejection, position_size_usd, quote_rejection, safety_rejection
+from desk.memes.sources import FETCH_ERRORS
+from desk.memes.store import MemeStore
+from desk.memes.vetter import Vet
+from desk.notify import Notifier
+
+log = logging.getLogger("desk")
+
+UNCERTAIN_BLOCK_HOURS = 24  # until the user checks the wallet
+DEAD_VETTER_ALERT_CYCLES = 3
+EXIT_LABELS = {
+    "stop_loss": "stop-loss", "take_profit": "realização de lucro", "trailing_stop": "stop móvel",
+    "max_hold": "tempo máximo", "liquidity_drained": "liquidez sumindo",
+}
+
+
+class DexSource(Protocol):
+    def discover(self) -> list[str]: ...
+
+    def pairs(self, mints: list[str]) -> dict[str, Pair]: ...
+
+
+class SafetySource(Protocol):
+    def report(self, mint: str) -> Safety: ...
+
+
+class QuoteSource(Protocol):
+    def quote(self, input_mint: str, output_mint: str, amount: int) -> Quote | None: ...
+
+
+class VetSource(Protocol):
+    def vet(self, pair: Pair, safety: Safety, now: datetime) -> Vet: ...
+
+
+@dataclass
+class MemeDeps:
+    settings: MemesSettings
+    store: MemeStore
+    dex: DexSource
+    rugcheck: SafetySource
+    jupiter: QuoteSource
+    vetter: VetSource | None
+    executor: MemeExecutor
+    journal: Journal
+    notifier: Notifier
+    now: Callable[[], datetime]
+
+
+@dataclass
+class MemeCycleReport:
+    equity: float = 0.0
+    discovered: int = 0
+    candidates: int = 0
+    checked: int = 0
+    vetted: int = 0
+    approved: int = 0
+    entries: int = 0
+    exits: int = 0
+    halted: bool = False
+    skips: Counter = field(default_factory=Counter)
+    errors: list[str] = field(default_factory=list)
+
+    def as_dict(self) -> dict:
+        return {
+            "equity": self.equity, "discovered": self.discovered, "candidates": self.candidates,
+            "checked": self.checked, "vetted": self.vetted, "approved": self.approved, "entries": self.entries,
+            "exits": self.exits, "halted": self.halted, "skips": dict(self.skips), "errors": list(self.errors),
+        }
+
+    def summary(self) -> str:
+        skips = ", ".join(f"{k}={v}" for k, v in sorted(self.skips.items())) or "-"
+        return (
+            f"equity=${self.equity:.2f} descobertos={self.discovered} candidatos={self.candidates} "
+            f"checados={self.checked} vetados={self.vetted} aprovados={self.approved} compras={self.entries} "
+            f"vendas={self.exits} parado={'sim' if self.halted else 'nao'} pulos[{skips}] erros={len(self.errors)}"
+        )
+
+
+def fomo_link(mint: str) -> str:
+    return f"https://fomo.family/tokens/solana/{mint}"
+
+
+def _usd(x: float) -> str:
+    for size, suffix in ((1e9, "B"), (1e6, "M"), (1e3, "k")):
+        if abs(x) >= size:
+            return f"${x / size:.1f}{suffix}"
+    return f"${x:.2f}"
+
+
+def run_meme_cycle(deps: MemeDeps) -> MemeCycleReport:
+    return _MemeCycle(deps).run()
+
+
+class _MemeCycle:
+    def __init__(self, deps: MemeDeps):
+        self.d = deps
+        self.s = deps.settings
+        self.store = deps.store
+        self.now = deps.now()
+        self.report = MemeCycleReport()
+        self.decisions: list[dict] = []
+        self.prices: dict[str, float] = {}
+        self.held_pairs: dict[str, Pair] = {}
+        self.vet_calls = 0
+        self.vet_failures = 0
+        self.mode = deps.executor.mode
+
+    def run(self) -> MemeCycleReport:
+        self.pay_rent()
+        self.mark_held()
+        self.check_drawdown()
+        self.manage_exits()
+        if not self.store.is_halted():
+            self.scan_and_enter()
+        self.record_equity()
+        self.track_vetter_health()
+        self.report.halted = self.store.is_halted()
+        for error in self.report.errors:
+            log.warning("memes: %s", error)
+        self.store.record_cycle(self.now, self.report.as_dict(), self.decisions)
+        return self.report
+
+    # --- helpers --------------------------------------------------------------
+    def error(self, message: str) -> None:
+        self.report.errors.append(message)
+
+    def decide(self, pair: Pair, decision: str, detail: str = "") -> None:
+        self.decisions.append({
+            "mint": pair.mint, "symbol": pair.symbol, "price_usd": pair.price_usd,
+            "liquidity_usd": pair.liquidity_usd, "market_cap_usd": pair.market_cap_usd,
+            "decision": decision, "detail": detail[:300],
+        })
+
+    def reject(self, pair: Pair, reason: str, detail: str = "", hours: float | None = None) -> None:
+        self.report.skips[reason] += 1
+        self.decide(pair, reason, detail)
+        hours = self.s.rejection_block_hours if hours is None else hours
+        if hours > 0:
+            self.store.block_entry(pair.mint, self.now + timedelta(hours=hours), reason)
+
+    def notify_trade(self, text: str) -> None:
+        if self.mode == "live" or self.s.notify_paper_trades:
+            self.d.notifier.send(f"[{self.mode.upper()}] {text}")
+
+    def notify_once(self, key: str, text: str) -> None:
+        if self.store.get_meta(key) is None:
+            self.store.set_meta(key, self.now.isoformat())
+            self.d.notifier.send(text)
+
+    def pay_rent(self) -> None:
+        today = self.now.date().isoformat()
+        if self.store.get_meta("rent_day") == today:
+            return
+        self.store.set_meta("rent_day", today)
+        if self.s.daily_rent_usd > 0 and not self.store.is_halted():
+            self.store.charge(self.now, "rent", self.s.daily_rent_usd, f"aluguel {today}")
+
+    # --- 1. mark --------------------------------------------------------------
+    def mark_held(self) -> None:
+        held = self.store.open_positions()
+        if held:
+            try:
+                self.held_pairs = self.d.dex.pairs([p.mint for p in held])
+            except FETCH_ERRORS as exc:
+                self.error(f"preços indisponíveis: {type(exc).__name__}")
+        for pos in held:
+            pair = self.held_pairs.get(pos.mint)
+            if pair is not None:
+                self.prices[pos.mint] = pair.price_usd
+                self.store.mark_price(pos.id, pair.price_usd)
+        self.report.equity = self.equity()
+
+    def equity(self) -> float:
+        value = sum(
+            p.value_at(self.prices.get(p.mint) or p.last_price_usd or p.entry_price_usd)
+            for p in self.store.open_positions()
+        )
+        return self.store.cash() + value
+
+    def record_equity(self) -> None:
+        cash = self.store.cash()
+        equity = self.equity()
+        self.store.record_equity(self.now, equity, cash, equity - cash)
+        self.report.equity = equity
+
+    # --- 2. drawdown ----------------------------------------------------------
+    def check_drawdown(self) -> None:
+        if self.store.is_halted():
+            return
+        peak, equity = self.store.peak(), self.report.equity
+        if peak <= 0 or (peak - equity) / peak < self.s.drawdown_halt:
+            return
+        drawdown = (peak - equity) / peak
+        self.store.set_halted(True)
+        self.d.journal.append(format_note(
+            f"POST-MORTEM MEMECOINS: queda de {drawdown:.0%} desde o pico", self.trade_summary(), self.now
+        ))
+        self.d.notifier.send(
+            f"Agente de memecoins DESLIGADO: não se pagou. A banca caiu {drawdown:.0%} desde o pico "
+            f"(pico ${peak:.2f}, equity ${equity:.2f}; custos ${self.store.total_costs():.2f}). Ele parou de comprar "
+            "e de gastar, mas segue vendendo pelas regras de saída. Para religar: python -m desk memes-resume"
+        )
+
+    def trade_summary(self) -> str:
+        lines = [
+            f"{(p.closed_at or self.now):%Y-%m-%d} | {p.symbol} | custo ${p.cost_usd:.2f} | recebido ${p.proceeds_usd:.2f} "
+            f"| PnL ${p.proceeds_usd - p.cost_usd:+.2f} | {p.close_reason}"
+            for p in self.store.closed_positions()
+        ]
+        lines += [f"ABERTA | {p.symbol} | custo ${p.cost_usd:.2f}" for p in self.store.open_positions()]
+        return "\n".join(lines) or "(nenhum trade)"
+
+    # --- 3. exits -------------------------------------------------------------
+    def manage_exits(self) -> None:
+        for pos in self.store.open_positions():
+            decision = exit_decision(pos, self.held_pairs.get(pos.mint), self.now, self.s)
+            if decision is not None:
+                self.sell(pos, *decision)
+
+    def sell(self, pos: MemePosition, reason: str, fraction: float) -> None:
+        try:
+            available = self.d.executor.sellable(pos.mint, pos.amount_raw)
+        except FETCH_ERRORS as exc:
+            self.error(f"saldo indisponível para {pos.symbol}: {type(exc).__name__}")
+            return
+        if available <= 0:
+            self.store.write_off(pos, self.now, "missing_in_wallet")
+            self.d.notifier.send(
+                f"{pos.symbol}: os tokens não estão mais na carteira (venda incerta anterior ou movidos à mão). "
+                f"Posição encerrada sem valor no registro; confira a carteira. {fomo_link(pos.mint)}"
+            )
+            return
+        whole = fraction >= 1
+        amount = available if whole else min(available, int(pos.amount_raw * fraction))
+        try:
+            fill = self.d.executor.sell(pos.mint, amount)
+        except ExecutionError as exc:
+            self.error(f"venda de {pos.symbol} falhou ({reason}): {exc}")
+            extra = " Verifique a carteira." if isinstance(exc, ExecutionUncertain) else ""
+            self.notify_once(f"sell_failed:{pos.id}",
+                             f"[{self.mode.upper()}] O agente não conseguiu vender {pos.symbol} ({EXIT_LABELS.get(reason, reason)}): "
+                             f"{exc}. Ele tenta de novo a cada ciclo.{extra} {fomo_link(pos.mint)}")
+            return
+        if whole:
+            pos.amount_raw = fill.amount_raw  # whatever the wallet still had: the position ends here
+        tokens = fill.amount_raw / 10 ** pos.decimals
+        price = fill.usd / tokens if tokens else 0.0
+        self.store.reduce_position(pos, fill, self.now, reason, price_usd=price)
+        closed = whole or fill.amount_raw >= pos.amount_raw
+        if closed:
+            self.store.block_entry(pos.mint, self.now + timedelta(hours=self.s.reentry_cooldown_hours), f"saiu ({reason})")
+        self.report.exits += 1
+        self.write_sell(pos, fill, reason, price, closed)
+
+    def write_sell(self, pos: MemePosition, fill: MemeFill, reason: str, price: float, closed: bool) -> None:
+        received = fill.usd - fill.fee_usd
+        change = price / pos.entry_price_usd - 1 if pos.entry_price_usd else 0.0
+        total = pos.proceeds_usd + received
+        result = f"resultado final ${total - pos.cost_usd:+.2f}" if closed else "posição segue aberta com o resto"
+        label = EXIT_LABELS.get(reason, reason)
+        self.d.journal.append(format_note(
+            f"VENDA MEMECOIN [{self.mode.upper()}]",
+            f"Token: {pos.name} ({pos.symbol}) {pos.mint}\n"
+            f"Motivo: {label} | vendido {'tudo' if closed else 'parte'}\n"
+            f"Recebido: ${received:.2f} (rede ${fill.fee_usd:.3f}) | preço ${price:.8g} "
+            f"(entrada ${pos.entry_price_usd:.8g}, {change:+.0%})\n"
+            f"Custo da posição ${pos.cost_usd:.2f}, recebido até aqui ${total:.2f}: {result}"
+            + (f"\nAssinatura: {fill.signature}" if fill.signature else ""),
+            self.now,
+        ))
+        self.notify_trade(f"VENDEU {pos.symbol} ({label}): ${received:.2f} a {change:+.0%} da entrada; {result}.")
+
+    # --- 4. discover and enter -------------------------------------------------
+    def slots_left(self) -> bool:
+        return not self.s.auto_trade or len(self.store.open_positions()) < self.s.max_positions
+
+    def scan_and_enter(self) -> None:
+        if not self.slots_left():
+            return
+        try:
+            discovered = self.d.dex.discover()
+        except FETCH_ERRORS as exc:
+            self.error(f"descoberta falhou: {type(exc).__name__}")
+            return
+        excluded = {p.mint for p in self.store.open_positions()} | self.store.blocked_ids(self.now)
+        mints = [m for m in discovered if m not in excluded]
+        self.report.discovered = len(mints)
+        if not mints:
+            return
+        try:
+            pairs = self.d.dex.pairs(mints)
+        except FETCH_ERRORS as exc:
+            self.error(f"DexScreener falhou: {type(exc).__name__}")
+            return
+        candidates = []
+        for pair in pairs.values():
+            reason = market_rejection(pair, self.now, self.s)
+            if reason:
+                self.report.skips[reason] += 1  # cheap check, not worth a row on the dashboard
+            else:
+                candidates.append(pair)
+        candidates.sort(key=lambda p: p.volume_h1_usd, reverse=True)
+        self.report.candidates = len(candidates)
+        for pair in candidates[: self.s.max_candidates_checked]:
+            if not self.slots_left() or not self.consider(pair):
+                break
+
+    def consider(self, pair: Pair) -> bool:
+        """Run the deep checks on one candidate. False means stop looking at more candidates this cycle."""
+        self.report.checked += 1
+        try:
+            safety = self.d.rugcheck.report(pair.mint)
+        except FETCH_ERRORS as exc:
+            self.error(f"RugCheck falhou para {pair.symbol}: {type(exc).__name__}")
+            self.report.skips["rugcheck_unavailable"] += 1
+            return True
+        reason = safety_rejection(safety, self.s)
+        if reason:
+            self.reject(pair, reason)
+            return True
+
+        size = position_size_usd(equity=self.report.equity, cash=self.store.cash(), s=self.s)
+        if size <= 0:
+            if self.s.auto_trade:
+                self.report.skips["no_cash"] += 1
+                return False
+            size = max(self.report.equity * self.s.position_pct, self.s.min_trade_usd)  # alerts: quote a typical size
+        quote = self.check_quotes(pair, safety, size)
+        if quote is None:
+            return True
+
+        vet = None
+        if self.s.analyst != "none" and self.d.vetter is not None:
+            if self.store.analyst_calls_since(self.now - timedelta(hours=24)) >= self.s.max_vets_per_day:
+                self.report.skips["vet_cap"] += 1
+                return False  # never buys unvetted when vetting is on
+            vet = self.vet(pair, safety)
+            if vet is None:
+                return True
+            if not vet.approves:
+                flags = "; ".join(vet.red_flags)
+                self.reject(pair, "vetter_avoid", f"{vet.verdict}/{vet.confidence}: {vet.summary} {flags}".strip(),
+                            hours=self.s.vet_block_hours)
+                return True
+        self.report.approved += 1
+        alert = self.approval_text(pair, safety, quote, vet)
+
+        if not self.s.auto_trade:
+            self.d.notifier.send(f"Memecoin aprovada (só alerta, você decide): {alert}")
+            self.decide(pair, "alerted", f"ida e volta {quote:.1%}")
+            self.store.block_entry(pair.mint, self.now + timedelta(hours=24), "alertado")
+            return True
+        return self.buy(pair, safety, size, quote, vet, alert)
+
+    def check_quotes(self, pair: Pair, safety: Safety, size: float) -> float | None:
+        """Round-trip cost of a buy of `size` sold right back, or None if the token must be skipped."""
+        amount_in = usdc_raw(size)
+        try:
+            q_buy = self.d.jupiter.quote(USDC_MINT, pair.mint, amount_in)
+            q_sell = self.d.jupiter.quote(pair.mint, USDC_MINT, q_buy.out_amount) if q_buy else None
+        except FETCH_ERRORS as exc:
+            self.error(f"Jupiter falhou para {pair.symbol}: {type(exc).__name__}")
+            self.report.skips["quote_unavailable"] += 1
+            return None
+        loss = 1 - q_sell.out_amount / amount_in if q_buy and q_sell and amount_in else None
+        impact = max((q.price_impact_pct for q in (q_buy, q_sell) if q), default=0.0)
+        reason = quote_rejection(round_trip_loss=loss, price_impact_pct=impact, s=self.s)
+        if reason:
+            detail = f"ida e volta {loss:.1%}, impacto {impact:.1f}%" if loss is not None else "sem rota de volta"
+            self.reject(pair, reason, detail)
+            return None
+        tokens = q_buy.out_amount / 10 ** safety.decimals
+        quoted_price = size / tokens if tokens else math.inf
+        if pair.price_usd <= 0 or abs(math.log(quoted_price / pair.price_usd)) > math.log(1 + self.s.max_price_mismatch_pct / 100):
+            self.reject(pair, "price_mismatch", f"cotação ${quoted_price:.8g} vs DexScreener ${pair.price_usd:.8g}")
+            return None
+        return loss
+
+    def vet(self, pair: Pair, safety: Safety) -> Vet | None:
+        self.vet_calls += 1
+        self.report.vetted += 1
+        self.store.record_analyst_call(self.now)
+        if self.s.cost_per_vet_usd > 0:
+            self.store.charge(self.now, "vet", self.s.cost_per_vet_usd, pair.symbol)
+        try:
+            vet = self.d.vetter.vet(pair, safety, self.now)
+        except AnalystError as exc:
+            self.vet_failures += 1
+            self.error(f"Claude falhou ao checar {pair.symbol}: {exc}")
+            self.report.skips["vet_error"] += 1
+            self.decide(pair, "vet_error", str(exc))
+            return None
+        self.store.save_vet(pair.mint, self.now, vet.verdict, vet.as_dict())
+        return vet
+
+    def track_vetter_health(self) -> None:
+        if self.vet_calls == 0:
+            return
+        dead = int(self.store.get_meta("vet_dead_cycles") or 0) + 1 if self.vet_failures == self.vet_calls else 0
+        self.store.set_meta("vet_dead_cycles", str(dead))
+        if dead == DEAD_VETTER_ALERT_CYCLES:
+            self.d.notifier.send(
+                f"O Claude falhou em todas as checagens de memecoins nos últimos {dead} ciclos (limite do plano, "
+                "login ou timeout?). O agente não compra sem essa checagem; as vendas seguem. Veja state/desk.log."
+            )
+
+    def approval_text(self, pair: Pair, safety: Safety, loss: float, vet: Vet | None) -> str:
+        why = f" | Claude: {vet.narrative}" if vet else ""
+        return (
+            f"{pair.symbol} ({pair.name}) | mcap {_usd(pair.market_cap_usd)} | liquidez {_usd(pair.liquidity_usd)} | "
+            f"1h: volume {_usd(pair.volume_h1_usd)}, {pair.change_h1_pct:+.0f}% | idade {pair.age_minutes(self.now) / 60:.0f}h | "
+            f"top10 {safety.top10_pct:.0f}% | ida e volta {loss:.1%}{why} | {fomo_link(pair.mint)} | {pair.url}"
+        )
+
+    def buy(self, pair: Pair, safety: Safety, size: float, loss: float, vet: Vet | None, alert: str) -> bool:
+        try:
+            problem = self.d.executor.funds_problem(size)
+        except FETCH_ERRORS as exc:
+            self.error(f"saldo da carteira indisponível: {type(exc).__name__}")
+            return False
+        if problem:
+            self.report.skips[problem] += 1
+            self.decide(pair, problem)
+            self.notify_once(f"{problem}:{self.now.date()}",
+                             f"Carteira das memecoins sem saldo ({problem}): o agente não consegue comprar. "
+                             "Veja docs/PENDENCIAS.md (carteira Solana).")
+            return False
+        try:
+            fill = self.d.executor.buy(pair.mint, size)
+        except ExecutionUncertain as exc:
+            self.error(f"compra de {pair.symbol} incerta: {exc}")
+            self.store.block_entry(pair.mint, self.now + timedelta(hours=UNCERTAIN_BLOCK_HOURS), "compra incerta")
+            self.decide(pair, "buy_uncertain", str(exc))
+            self.d.notifier.send(f"Compra de {pair.symbol} ficou incerta ({exc}). Confira a carteira. {fomo_link(pair.mint)}")
+            return True
+        except ExecutionError as exc:
+            self.error(f"compra de {pair.symbol} falhou: {exc}")
+            self.reject(pair, "buy_failed", str(exc))
+            return True
+        tokens = fill.amount_raw / 10 ** safety.decimals
+        if tokens <= 0:
+            self.error(f"compra de {pair.symbol} devolveu zero tokens")
+            return True
+        entry = fill.usd / tokens
+        pos = MemePosition(
+            mint=pair.mint, symbol=pair.symbol, name=pair.name, decimals=safety.decimals, amount_raw=fill.amount_raw,
+            cost_usd=fill.usd + fill.fee_usd, entry_price_usd=entry, peak_price_usd=entry,
+            entry_liquidity_usd=pair.liquidity_usd, opened_at=self.now,
+        )
+        self.store.open_position(pos, fill, self.now, f"ida e volta {loss:.1%}")
+        self.prices[pair.mint] = pair.price_usd
+        self.report.entries += 1
+        self.decide(pair, "bought", f"${fill.usd:.2f} a ${entry:.8g}")
+        self.d.journal.append(format_note(
+            f"COMPRA MEMECOIN [{self.mode.upper()}]",
+            f"Token: {pair.name} ({pair.symbol}) {pair.mint}\n"
+            f"Gasto: ${fill.usd:.2f} + rede ${fill.fee_usd:.3f} | tokens {tokens:,.2f} | preço pago ${entry:.8g} "
+            f"(DexScreener ${pair.price_usd:.8g})\n"
+            f"Mercado: mcap {_usd(pair.market_cap_usd)} | liquidez {_usd(pair.liquidity_usd)} | 1h: volume "
+            f"{_usd(pair.volume_h1_usd)}, {pair.buys_h1} compras / {pair.sells_h1} vendas, {pair.change_h1_pct:+.0f}%\n"
+            f"Segurança: top10 {safety.top10_pct:.0f}% | insiders {safety.insider_pct:.0f}% | LP travada "
+            f"{safety.lp_locked_pct:.0f}% | ida e volta {loss:.1%}\n"
+            + (f"Claude: {vet.verdict} ({vet.confidence}) | {vet.narrative} | {vet.summary}\n" if vet else "")
+            + f"Saídas: stop -{self.s.stop_loss_pct:.0f}%, metade em +{self.s.take_profit_pct:.0f}%, stop móvel "
+            f"{self.s.trailing_stop_pct:.0f}% do pico, máximo {self.s.max_hold_hours:.0f}h\n"
+            f"Links: {fomo_link(pair.mint)} | {pair.url}"
+            + (f"\nAssinatura: {fill.signature}" if fill.signature else ""),
+            self.now,
+        ))
+        self.notify_trade(f"COMPROU ${fill.usd:.2f} de {alert}")
+        return True
