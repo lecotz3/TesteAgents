@@ -14,6 +14,7 @@ dependencies = [
 
 [project.optional-dependencies]
 live = ["polymarket-client>=0.13"]
+memes-live = ["solders>=0.21"]
 
 [dependency-groups]
 dev = [

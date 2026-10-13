@@ -161,7 +161,26 @@ class Jupiter:
         resp.raise_for_status()
         return resp.json()
 
-    def balances(self, owner: str) -> dict:
-        resp = self._http.get(f"{self._base}/ultra/v1/balances/{owner}")
+
+class SolanaRpc:
+    """Wallet balances straight from a Solana RPC node (the public one by default)."""
+
+    def __init__(self, http: httpx.Client, url: str):
+        self._http = http
+        self._url = url
+
+    def _call(self, method: str, params: list) -> dict:
+        resp = self._http.post(self._url, json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
         resp.raise_for_status()
-        return resp.json()
+        data = resp.json()
+        if "error" in data or "result" not in data:
+            raise ValueError(f"RPC {method}: {(data.get('error') or {}).get('message', 'sem resultado')}")
+        return data["result"]
+
+    def sol_balance(self, owner: str) -> float:
+        return int(self._call("getBalance", [owner])["value"]) / 1e9
+
+    def token_balance(self, owner: str, mint: str) -> int:
+        """Raw amount of `mint` across every token account of `owner` (classic SPL and Token-2022)."""
+        accounts = self._call("getTokenAccountsByOwner", [owner, {"mint": mint}, {"encoding": "jsonParsed"}])["value"]
+        return sum(int(a["account"]["data"]["parsed"]["info"]["tokenAmount"]["amount"]) for a in accounts)
