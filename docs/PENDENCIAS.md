@@ -8,7 +8,7 @@ Tudo que eu (Claude) não posso fazer por você: credenciais, dinheiro e decisõ
 
 | Item | Estado |
 |---|---|
-| Código | Pronto, 481 testes passando, na branch `feat/polymarket-desk` (PR #1 no GitHub) |
+| Código | Pronto, 484 testes passando, direto na `main` (o PR #1 já foi juntado; daqui em diante os commits vão direto na `main`, sem PR) |
 | Agendador do Windows | **Ligado.** `PolymarketDesk` roda um ciclo a cada 10 min (paper); `PolymarketDeskMemes` roda as memecoins a cada 3 min (paper); `PolymarketDeskMemesExits` confere as saídas das memecoins a cada 1 min; `PolymarketDeskMonthly` roda todo dia e relata 1x por mês |
 | Modo paper | Rodando sozinho: cada ciclo varre ~1000 mercados e o Claude analisa até 3. Desde 13/10 à noite a sua rede às vezes não resolve os endereços do Polymarket (DNS); nesses ciclos ele não varre nada e registra o erro. É o mesmo bloqueio do Brasil: não contorne |
 | Economia | O robô paga para existir: aluguel diário (assinatura rateada) + US$0,01 por análise, saindo do caixa dele. Se não lucrar mais que isso, é **desligado** na linha de 40% |
@@ -103,7 +103,7 @@ O padrão é o Claude (`analyst = "claude"`). Para usar sua assinatura do ChatGP
 O Codex vale só para o paper. No modo real o robô exige o Claude, porque o sandbox do Codex ainda lê arquivos locais (inclusive o `.env` com a chave da carteira).
 
 ### D6. Juntar a branch na `main`
-Há um Pull Request aberto no GitHub (`lecotz3/TesteAgents`). Revise e dê **Merge** quando quiser. O robô roda da pasta local, então isso não muda nada no que já está rodando.
+Feito: você juntou o PR #1 na `main` em 13/10. Daqui em diante os commits vão direto na `main`, sem PR. O robô roda da pasta local, que agora está na `main`.
 
 ---
 
