@@ -1,4 +1,4 @@
-"""Command line: python -m desk {cycle,status,monthly,resume,analyze,live-check}."""
+"""Command line: python -m desk {cycle,status,monthly,resume,analyze,live-check,dashboard,memes,memes-status,...}."""
 from __future__ import annotations
 
 import argparse
@@ -49,12 +49,19 @@ class App:
     http: httpx.Client
 
 
-def build_app(config_path: Path, env_path: Path) -> App:
+def load_runtime(config_path: Path, env_path: Path) -> tuple[Settings, Secrets, httpx.Client, Notifier]:
+    """What every agent shares: settings, secrets, one HTTP client and the alert channel."""
     settings = load_settings(config_path)
     if not settings.state_dir.is_absolute():
         settings.state_dir = config_path.resolve().parent / settings.state_dir
     secrets = load_secrets(merged_env(env_path))
     http = httpx.Client(timeout=20.0, headers={"User-Agent": USER_AGENT}, follow_redirects=True)
+    token = secrets.telegram_bot_token.get_secret_value() if secrets.telegram_bot_token else None
+    return settings, secrets, http, Notifier(http, token, secrets.telegram_chat_id)
+
+
+def build_app(config_path: Path, env_path: Path) -> App:
+    settings, secrets, http, notifier = load_runtime(config_path, env_path)
     store = Store(settings.state_dir / "desk.db", start_cash=settings.bankroll_start_usd)
     try:
         store.ensure_mode(settings.mode)
@@ -66,8 +73,6 @@ def build_app(config_path: Path, env_path: Path) -> App:
             f"renomeie-a (ex.: state-{exc.stored}) ou aponte state_dir para outra pasta no config.toml"
         ) from exc
     journal = Journal(settings.state_dir / "trades.txt")
-    token = secrets.telegram_bot_token.get_secret_value() if secrets.telegram_bot_token else None
-    notifier = Notifier(http, token, secrets.telegram_chat_id)
     return App(settings, secrets, store, journal, notifier, http)
 
 
@@ -272,6 +277,21 @@ def cmd_dashboard(app: App, port: int = 8765, open_browser: bool = True) -> int:
     return 0
 
 
+def run_memes_command(command: str, config_path: Path, env_path: Path) -> int:
+    from desk.memes import app as memes
+
+    try:
+        app = memes.build_memes_app(config_path, env_path)
+    except ConfigError as exc:
+        print(f"Erro de configuração: {exc}")
+        return 2
+    setup_logging(app.settings.state_dir)
+    try:
+        return memes.run_command(command, app)
+    finally:
+        app.close()
+
+
 def main(argv: list[str] | None = None) -> int:
     if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -290,7 +310,14 @@ def main(argv: list[str] | None = None) -> int:
     dashboard = sub.add_parser("dashboard", help="abre o painel local no navegador (só leitura)")
     dashboard.add_argument("--port", type=int, default=8765)
     dashboard.add_argument("--no-browser", action="store_true", help="não abre o navegador sozinho")
+    sub.add_parser("memes", help="roda um ciclo do agente de memecoins (Solana)")
+    sub.add_parser("memes-status", help="banca, posições e trades do agente de memecoins")
+    sub.add_parser("memes-resume", help="religa o agente de memecoins após parada por queda")
+    sub.add_parser("memes-live-check", help="verifica se o modo real das memecoins está pronto (não negocia)")
     args = parser.parse_args(argv)
+
+    if args.command.startswith("memes"):
+        return run_memes_command(args.command, args.config, args.env_file)
 
     try:
         app = build_app(args.config, args.env_file)

@@ -116,6 +116,7 @@ class MemesSettings(BaseModel):
     analyst: Literal["claude", "none"] = "claude"
     cost_per_vet_usd: float = Field(0.01, ge=0)
     max_vets_per_day: int = Field(30, ge=0)
+    max_vets_per_cycle: int = Field(2, ge=0)  # each check takes minutes; the next cycle's exits must not wait
     vet_block_hours: float = Field(24.0, ge=0)
     daily_rent_usd: float = Field(0.0, ge=0)
     drawdown_halt: float = Field(0.40, gt=0, lt=1)
@@ -172,6 +173,9 @@ class Secrets(BaseModel):
     desk_live: str | None = None
     telegram_bot_token: SecretStr | None = None
     telegram_chat_id: str | None = None
+    memes_private_key: SecretStr | None = None  # dedicated Solana wallet for the memecoin agent (base58)
+    memes_live: str | None = None
+    memes_rpc_url: SecretStr | None = None  # optional private RPC (its URL usually carries an API key)
 
 
 def read_env_file(path: Path) -> dict[str, str]:
@@ -203,4 +207,7 @@ def load_secrets(env: Mapping[str, str]) -> Secrets:
         desk_live=get("DESK_LIVE"),
         telegram_bot_token=get("TELEGRAM_BOT_TOKEN"),
         telegram_chat_id=get("TELEGRAM_CHAT_ID"),
+        memes_private_key=get("MEMES_PRIVATE_KEY"),
+        memes_live=get("MEMES_LIVE"),
+        memes_rpc_url=get("MEMES_RPC_URL"),
     )

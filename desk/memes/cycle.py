@@ -350,6 +350,9 @@ class _MemeCycle:
             if self.store.analyst_calls_since(self.now - timedelta(hours=24)) >= self.s.max_vets_per_day:
                 self.report.skips["vet_cap"] += 1
                 return False  # never buys unvetted when vetting is on
+            if self.vet_calls >= self.s.max_vets_per_cycle:
+                self.report.skips["vet_cycle_cap"] += 1
+                return False  # the rest waits for the next cycle
             vet = self.vet(pair, safety)
             if vet is None:
                 return True

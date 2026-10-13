@@ -257,3 +257,11 @@ def test_tokens_gone_from_the_wallet_are_written_off(tmp_path, store):
                         notifier=notifier))
     assert store.closed_positions()[0].close_reason == "missing_in_wallet"
     assert any("carteira" in m for m in notifier.sent)
+
+
+def test_claude_checks_per_cycle_are_capped_so_exits_are_never_starved(tmp_path, store):
+    other = "B" * 44
+    dex = FakeDex({MINT: make_pair(), other: make_pair(mint=other, symbol="OTHER", volume_h1_usd=100_000.0)})
+    vetter = FakeVetter()
+    report = run_meme_cycle(deps(tmp_path, store, dex=dex, vetter=vetter, max_vets_per_cycle=1))
+    assert vetter.calls == [MINT] and report.entries == 1 and report.skips["vet_cycle_cap"] == 1
