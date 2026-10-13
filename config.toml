@@ -112,3 +112,7 @@ trailing_activation_pct = 20
 max_hold_hours = 24
 liquidity_drain_pct = 50       # a liquidez caiu pela metade: sai
 reentry_cooldown_hours = 24
+
+# O que o paper precisa mostrar antes de dinheiro real (aparece no painel e no memes-status)
+readiness_min_days = 14
+readiness_min_trades = 30

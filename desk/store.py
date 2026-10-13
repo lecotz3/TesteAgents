@@ -159,6 +159,10 @@ class Ledger:
         row = self._db.execute("SELECT equity FROM equity WHERE ts < ? ORDER BY rowid DESC LIMIT 1", (_iso(ts),)).fetchone()
         return float(row["equity"]) if row else None
 
+    def first_equity_ts(self) -> datetime | None:
+        row = self._db.execute("SELECT ts FROM equity ORDER BY rowid LIMIT 1").fetchone()
+        return _dt(row["ts"]) if row else None
+
     def last_equity(self) -> float | None:
         row = self._db.execute("SELECT equity FROM equity ORDER BY rowid DESC LIMIT 1").fetchone()
         return float(row["equity"]) if row else None

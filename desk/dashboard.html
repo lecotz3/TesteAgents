@@ -384,6 +384,13 @@ function render(s) {
   renderMemes(s.memes);
 }
 
+function readinessCard(r) {
+  const progress = Math.min(r.days / Math.max(r.min_days, 1), r.closed / Math.max(r.min_trades, 1), r.net > 0 ? 1 : 0);
+  return card("Pronto p/ dinheiro real?", r.ready ? "Sim" : "Ainda não",
+    `${Math.min(r.days, r.min_days)}/${r.min_days} dias · ${Math.min(r.closed, r.min_trades)}/${r.min_trades} trades · ${fmtSigned(r.net)} após custos`,
+    r.ready ? "pos" : "", 100 * progress);
+}
+
 function renderMemes(m) {
   document.getElementById("memes-empty").hidden = !!m;
   document.getElementById("memes").hidden = !m;
@@ -417,6 +424,7 @@ function renderMemes(m) {
     card("Posições", `${m.positions.length}/${m.max_positions}`, `caixa livre ${fmtUsd(m.cash)}`),
     card("Trades fechados", String(m.closed.count), m.closed.count ? `${m.closed.wins} com lucro, total ${fmtSigned(m.closed.pnl)}` : "nenhum ainda",
          signClass(m.closed.pnl)),
+    readinessCard(m.readiness),
     card("Checagens do Claude (24h)", `${m.vets_24h}/${m.vet_cap}`, m.analyst === "none" ? "desligadas: só as regras" : "ele só compra o que o Claude não vetar",
          "", m.vet_cap > 0 ? (100 * m.vets_24h) / m.vet_cap : null),
   );

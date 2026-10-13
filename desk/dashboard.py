@@ -13,6 +13,7 @@ from typing import Callable
 
 from desk.config import Settings
 from desk.economy import economics
+from desk.memes.readiness import readiness
 from desk.memes.store import MemeStore
 from desk.store import Store
 
@@ -128,6 +129,7 @@ def memes_snapshot(state_dir: Path, settings: Settings, now: datetime,
             "equity_curve": [[_iso(ts), value] for ts, value in curve],
             "vets_24h": store.analyst_calls_since(now - timedelta(hours=24)), "vet_cap": m.max_vets_per_day,
             "journal_tail": tail(state_dir / "memes.txt", 80),
+            "readiness": readiness(store, m, now).as_dict(),
             "scheduler": scheduler() if scheduler else None,
         }
     finally:

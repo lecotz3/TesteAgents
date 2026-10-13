@@ -16,6 +16,7 @@ from desk.lock import cycle_lock
 from desk.memes.cycle import MemeDeps, run_meme_cycle
 from desk.memes.executor import LiveMemeExecutor, MemeExecutor, PaperMemeExecutor, load_wallet, raw_usdc
 from desk.memes.models import USDC_MINT
+from desk.memes.readiness import readiness
 from desk.memes.sources import FETCH_ERRORS, DexScreener, Jupiter, JupiterTokens, RugCheck, SolanaRpc
 from desk.memes.store import MemeStore
 from desk.memes.vetter import MemeVetter
@@ -140,6 +141,7 @@ def cmd_memes_status(app: MemesApp) -> int:
     print(f"Custos: ${store.total_costs():.2f} (24h: ${store.costs_since(now - timedelta(hours=24)):.2f}) | "
           f"Checagens do Claude 24h: {store.analyst_calls_since(now - timedelta(hours=24))}/{m.max_vets_per_day} | "
           f"Líquido: ${equity - m.bankroll_start_usd:+.2f}")
+    print(f"Prova em paper: {readiness(store, m, now).summary}")
     positions = store.open_positions()
     print(f"Posições abertas ({len(positions)}/{m.max_positions}):")
     for p in positions:
@@ -201,6 +203,10 @@ def cmd_memes_live_check(app: MemesApp) -> int:
     if usdc < m.min_trade_usd:
         print("Sem USDC para comprar.")
         ok = False
+    proof = readiness(app.store, m, utcnow())
+    if not proof.ready:
+        print(f"Aviso: o paper ainda não provou que o agente se paga ({proof.summary}). "
+              "A recomendação é esperar (docs/PENDENCIAS.md, D8); a decisão é sua.")
     return _verdict(ok)
 
 

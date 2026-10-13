@@ -132,6 +132,9 @@ class MemesSettings(BaseModel):
     vet_block_hours: float = Field(24.0, ge=0)
     daily_rent_usd: float = Field(0.0, ge=0)
     drawdown_halt: float = Field(0.40, gt=0, lt=1)
+    # what paper has to show before real money (docs/PENDENCIAS.md, D8)
+    readiness_min_days: int = Field(14, ge=0)
+    readiness_min_trades: int = Field(30, ge=0)
 
 
 class MonthlySettings(BaseModel):

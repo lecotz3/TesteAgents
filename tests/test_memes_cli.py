@@ -137,6 +137,7 @@ def test_status_shows_money_positions_and_trades(app, capsys):
     assert memes_app.cmd_memes_status(app) == 0
     out = capsys.readouterr().out
     assert "Memecoins | modo: paper" in out and "SEALS" in out and "+100%" in out and "BUY" in out
+    assert "Prova em paper: 0/14 dias, 0/30 trades fechados" in out
 
 
 def test_resume_clears_halt_and_resets_peak(app):
@@ -172,6 +173,7 @@ def test_live_check_reads_the_wallet(tmp_path, capsys):
         a.close()
     out = capsys.readouterr().out
     assert owner in out and "0.0500 SOL" in out and "$25.00" in out and "PRONTO" in out
+    assert "Aviso: o paper ainda não provou" in out  # a warning, not a block: the decision is the owner's
     assert key not in out
 
 

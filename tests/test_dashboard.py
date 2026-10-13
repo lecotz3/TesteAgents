@@ -94,6 +94,7 @@ def test_snapshot_shows_the_memes_agent(state):
     assert memes["cycles"][0]["discovered"] == 59 and memes["last_cycle_minutes_ago"] == pytest.approx(5)
     assert memes["journal_tail"] == ["COMPRA MEMECOIN [PAPER] SEALS"] and memes["scheduler"] == {"installed": False}
     assert memes["shutdown_line"] == pytest.approx(102.99 * 0.6)
+    assert memes["readiness"]["ready"] is False and "0/30 trades" in memes["readiness"]["summary"]
     json.dumps(memes)
 
 
