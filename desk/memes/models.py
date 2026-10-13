@@ -29,6 +29,7 @@ class Pair:
     has_socials: bool
     url: str
     x_url: str | None = None  # the X post or profile the token links to
+    organic_score: float | None = None  # Jupiter's 0-100 score of real (non-bot) trading, when known
 
     def age_minutes(self, now: datetime) -> float:
         return (now - self.created_at).total_seconds() / 60 if self.created_at else 0.0

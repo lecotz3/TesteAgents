@@ -163,3 +163,20 @@ def make_post(**o):
 def make_profile(**o):
     base = dict(handle="CealOnSol", followers=1, tweets=2, joined=NOW - timedelta(minutes=30), verified=False)
     return XProfile(**{**base, **o})
+
+
+class FakeTokens:
+    def __init__(self, discovered=(), info=None, fail=None):
+        self.discovered, self.by_mint, self.fail = list(discovered), dict(info or {}), fail
+        self.info_calls: list[list[str]] = []
+
+    def discover(self, categories, interval, limit=100):
+        if self.fail:
+            raise self.fail
+        return list(self.discovered)
+
+    def info(self, mints):
+        self.info_calls.append(list(mints))
+        if self.fail:
+            raise self.fail
+        return {m: self.by_mint[m] for m in mints if m in self.by_mint}

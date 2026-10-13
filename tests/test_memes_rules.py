@@ -82,3 +82,9 @@ def test_exit_rules(pos_overrides, pair, expected):
 def test_trailing_stop_uses_the_new_peak_before_take_profit_too():
     pos = make_meme_position(peak_price_usd=0.0028)  # ran to +87% and came back
     assert exit_decision(pos, price(0.0019), NOW, S) == ("trailing_stop", 1.0)
+
+
+def test_low_organic_score_is_rejected_but_unknown_is_not():
+    assert market_rejection(make_pair(organic_score=30.0), NOW, S) == "low_organic_score"
+    assert market_rejection(make_pair(organic_score=80.0), NOW, S) is None
+    assert market_rejection(make_pair(organic_score=None), NOW, S) is None

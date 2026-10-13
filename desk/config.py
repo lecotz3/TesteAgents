@@ -86,6 +86,11 @@ class MemesSettings(BaseModel):
     min_change_h1_pct: float = -15.0
     min_market_cap_usd: float = Field(150_000.0, ge=0)
     max_market_cap_usd: float = Field(25_000_000.0, gt=0)
+    min_organic_score: float = Field(50.0, ge=0, le=100)  # Jupiter's real-trading score (unknown = not checked)
+    # discovery beyond DexScreener: Jupiter's most traded / most organic / trending lists
+    jup_discovery: bool = True
+    jup_categories: list[str] = Field(default_factory=lambda: ["toptraded", "toporganicscore", "toptrending"])
+    jup_interval: Literal["5m", "1h", "6h", "24h"] = "1h"
     # safety filters (RugCheck)
     min_lp_locked_pct: float = Field(80.0, ge=0, le=100)
     max_top10_holders_pct: float = Field(30.0, ge=0, le=100)

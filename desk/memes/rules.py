@@ -21,6 +21,8 @@ def market_rejection(p: Pair, now: datetime, s: MemesSettings) -> str | None:
         return "few_trades"
     if p.buy_ratio_h1 < s.min_buy_ratio_h1:
         return "selling_pressure"
+    if p.organic_score is not None and p.organic_score < s.min_organic_score:
+        return "low_organic_score"  # Jupiter sees mostly bots and wash trading
     if p.change_h1_pct > s.max_change_h1_pct:
         return "vertical_pump"
     if p.change_h1_pct < s.min_change_h1_pct:

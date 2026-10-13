@@ -206,3 +206,16 @@ def test_cycle_reads_x_through_fxtwitter_unless_switched_off(tmp_path, monkeypat
     finally:
         a.close()
     assert isinstance(seen[0].x, FxTwitter) is expected
+
+
+def test_cycle_gets_jupiter_token_lists(tmp_path, monkeypatch):
+    from desk.memes.sources import JupiterTokens
+
+    seen = []
+    monkeypatch.setattr(memes_app, "run_meme_cycle", lambda deps: seen.append(deps) or MemeCycleReport())
+    a = memes_app.build_memes_app(write_config(tmp_path), tmp_path / ".env")
+    try:
+        memes_app.cmd_memes_cycle(a)
+    finally:
+        a.close()
+    assert isinstance(seen[0].tokens, JupiterTokens)

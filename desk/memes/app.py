@@ -16,7 +16,7 @@ from desk.lock import cycle_lock
 from desk.memes.cycle import MemeDeps, run_meme_cycle
 from desk.memes.executor import LiveMemeExecutor, MemeExecutor, PaperMemeExecutor, load_wallet, raw_usdc
 from desk.memes.models import USDC_MINT
-from desk.memes.sources import FETCH_ERRORS, DexScreener, Jupiter, RugCheck, SolanaRpc
+from desk.memes.sources import FETCH_ERRORS, DexScreener, Jupiter, JupiterTokens, RugCheck, SolanaRpc
 from desk.memes.store import MemeStore
 from desk.memes.vetter import MemeVetter
 from desk.memes.x import FxTwitter
@@ -109,6 +109,7 @@ def cmd_memes_cycle(app: MemesApp) -> int:
                 jupiter=Jupiter(app.http), vetter=make_vetter(app), executor=make_meme_executor(app),
                 journal=app.journal, notifier=app.notifier, now=utcnow,
                 x=FxTwitter(app.http, app.settings.memes.x_api_url) if app.settings.memes.x_enabled else None,
+                tokens=JupiterTokens(app.http),
             )
         except ConfigError as exc:
             log.error("memes: configuração inválida: %s", exc)

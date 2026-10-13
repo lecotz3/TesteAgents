@@ -15,7 +15,7 @@ from desk.memes.vetter import Vet
 from tests.factories import NOW, CapturingNotifier
 from desk.memes.x import XUnavailable
 from tests.meme_factories import (
-    MINT, FakeDex, FakeJupiter, FakeRug, FakeX, make_meme_position, make_pair, make_post, make_profile,
+    MINT, FakeDex, FakeJupiter, FakeRug, FakeTokens, FakeX, make_meme_position, make_pair, make_post, make_profile,
     make_safety,
 )
 
@@ -42,13 +42,13 @@ def store(tmp_path):
 
 
 def deps(tmp_path, store, *, dex=None, rug=None, jup=None, vetter=None, executor=None, notifier=None, now=NOW,
-         x=None, **settings):
+         x=None, tokens=None, **settings):
     jup = jup or FakeJupiter()
     return MemeDeps(
         settings=MemesSettings(**settings), store=store, dex=dex or FakeDex({MINT: make_pair()}),
         rugcheck=rug or FakeRug(), jupiter=jup, vetter=FakeVetter() if vetter is None else vetter,
         executor=executor or PaperMemeExecutor(jup, network_fee_usd=0.002), journal=Journal(tmp_path / "memes.txt"),
-        notifier=notifier or CapturingNotifier(), now=lambda: now, x=x,
+        notifier=notifier or CapturingNotifier(), now=lambda: now, x=x, tokens=tokens,
     )
 
 
@@ -340,3 +340,28 @@ def test_x_can_be_switched_off(tmp_path, store):
     x = FakeX()
     report = run_meme_cycle(deps(tmp_path, store, x=x, x_enabled=False))
     assert report.entries == 1 and x.calls == []
+
+
+def test_jupiter_lists_add_candidates_and_enrich_them(tmp_path, store):
+    from desk.memes.sources import TokenInfo
+
+    dex = FakeDex({MINT: make_pair(x_url=None)}, discovered=[])  # DexScreener feeds found nothing this time
+    tokens = FakeTokens(discovered=[MINT], info={MINT: TokenInfo(organic_score=80.0, twitter=STATUS)})
+    vetter = FakeVetter()
+    report = run_meme_cycle(deps(tmp_path, store, dex=dex, tokens=tokens, x=FakeX(post=make_post()), vetter=vetter))
+    assert report.discovered == 1 and report.entries == 1
+    assert vetter.x_seen.post.author == "elonmusk"  # the X link came from Jupiter
+
+
+def test_low_organic_score_from_jupiter_is_rejected(tmp_path, store):
+    from desk.memes.sources import TokenInfo
+
+    tokens = FakeTokens(info={MINT: TokenInfo(organic_score=20.0, twitter=None)})
+    rug = FakeRug()
+    report = run_meme_cycle(deps(tmp_path, store, tokens=tokens, rug=rug))
+    assert report.entries == 0 and report.skips["low_organic_score"] == 1 and rug.calls == []
+
+
+def test_jupiter_outage_does_not_stop_the_cycle(tmp_path, store):
+    report = run_meme_cycle(deps(tmp_path, store, tokens=FakeTokens(fail=httpx.ConnectError("down"))))
+    assert report.entries == 1 and report.errors  # DexScreener alone still works

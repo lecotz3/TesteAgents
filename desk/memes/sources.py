@@ -1,7 +1,8 @@
-"""Free public APIs: DexScreener (discovery and prices), RugCheck (contract safety), Jupiter Ultra (quotes)."""
+"""Free public APIs: DexScreener (discovery and prices), RugCheck (contract safety), Jupiter (lists, quotes)."""
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import httpx
@@ -127,6 +128,53 @@ class DexScreener:
                 if pair and (pair.mint not in best or pair.liquidity_usd > best[pair.mint].liquidity_usd):
                     best[pair.mint] = pair
         return best
+
+
+@dataclass(frozen=True)
+class TokenInfo:
+    organic_score: float | None
+    twitter: str | None
+
+
+class JupiterTokens:
+    """Jupiter's token lists (most traded, most organic, trending) and per-token organic score. Free, keyless."""
+
+    SEARCH_BATCH = 100
+
+    def __init__(self, http: httpx.Client, base_url: str = JUP_URL):
+        self._http = http
+        self._base = base_url
+
+    def discover(self, categories: tuple[str, ...] | list[str], interval: str, limit: int = 100) -> list[str]:
+        seen: dict[str, None] = {}
+        for category in categories:
+            try:
+                resp = self._http.get(f"{self._base}/tokens/v2/{category}/{interval}", params={"limit": limit})
+                resp.raise_for_status()
+                items = resp.json()
+            except FETCH_ERRORS as exc:
+                log.warning("lista %s da Jupiter indisponível: %s", category, type(exc).__name__)
+                continue
+            for item in items if isinstance(items, list) else []:
+                if isinstance(item, dict) and item.get("id"):
+                    seen.setdefault(str(item["id"]), None)
+        return list(seen)
+
+    def info(self, mints: list[str]) -> dict[str, TokenInfo]:
+        found: dict[str, TokenInfo] = {}
+        for i in range(0, len(mints), self.SEARCH_BATCH):
+            resp = self._http.get(f"{self._base}/tokens/v2/search",
+                                  params={"query": ",".join(mints[i:i + self.SEARCH_BATCH])})
+            resp.raise_for_status()
+            for item in resp.json() or []:
+                if not isinstance(item, dict) or not item.get("id"):
+                    continue
+                score = item.get("organicScore")
+                found[str(item["id"])] = TokenInfo(
+                    organic_score=float(score) if isinstance(score, (int, float)) else None,
+                    twitter=str(item["twitter"]) if item.get("twitter") else None,
+                )
+        return found
 
 
 class RugCheck:

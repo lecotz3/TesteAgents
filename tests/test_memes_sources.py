@@ -97,3 +97,35 @@ def test_jupiter_quote_without_route_is_none():
         "errorCode": 1, "errorMessage": "No routes found", "outAmount": None}))
     with httpx.Client() as http:
         assert Jupiter(http).quote(USDC, MINT, 3_000_000) is None
+
+
+def jup_token(mint, **o):
+    return {"id": mint, "symbol": mint[:4], "organicScore": 75.0, "organicScoreLabel": "high",
+            "twitter": f"https://x.com/{mint[:4]}/status/1", **o}
+
+
+@respx.mock
+def test_jupiter_tokens_discover_merges_lists_and_survives_a_failure():
+    from desk.memes.sources import JupiterTokens
+
+    respx.get(JUP + "/tokens/v2/toptraded/1h").mock(return_value=httpx.Response(200, json=[jup_token("A"), jup_token("B")]))
+    respx.get(JUP + "/tokens/v2/toporganicscore/1h").mock(return_value=httpx.Response(500))
+    respx.get(JUP + "/tokens/v2/toptrending/1h").mock(return_value=httpx.Response(200, json=[jup_token("B"), jup_token("C")]))
+    with httpx.Client() as http:
+        tokens = JupiterTokens(http)
+        assert tokens.discover(("toptraded", "toporganicscore", "toptrending"), "1h") == ["A", "B", "C"]
+
+
+@respx.mock
+def test_jupiter_tokens_info_reads_organic_score_and_x_link_in_batches():
+    from desk.memes.sources import JupiterTokens
+
+    mints = [f"M{i}" for i in range(101)]
+    route = respx.get(JUP + "/tokens/v2/search").mock(side_effect=lambda req: httpx.Response(200, json=[
+        jup_token(m, organicScore=None if m == "M5" else 75.0, twitter=None if m == "M6" else "https://x.com/a/status/9")
+        for m in req.url.params["query"].split(",")]))
+    with httpx.Client() as http:
+        info = JupiterTokens(http).info(mints)
+    assert route.call_count == 2 and len(info) == 101
+    assert info["M0"].organic_score == 75.0 and info["M0"].twitter == "https://x.com/a/status/9"
+    assert info["M5"].organic_score is None and info["M6"].twitter is None

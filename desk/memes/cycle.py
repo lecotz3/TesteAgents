@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import math
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Callable, Protocol
 
@@ -15,7 +15,7 @@ from desk.journal import Journal, format_note
 from desk.memes.executor import MemeExecutor, usdc_raw
 from desk.memes.models import USDC_MINT, MemeFill, MemePosition, Pair, Quote, Safety
 from desk.memes.rules import exit_decision, market_rejection, position_size_usd, quote_rejection, safety_rejection
-from desk.memes.sources import FETCH_ERRORS
+from desk.memes.sources import FETCH_ERRORS, TokenInfo
 from desk.memes.store import MemeStore
 from desk.memes.vetter import Vet
 from desk.memes.x import XSignal, XSource, XUnavailable, describe_x, narrative_strength, parse_x_link, x_rejection
@@ -45,6 +45,12 @@ class QuoteSource(Protocol):
     def quote(self, input_mint: str, output_mint: str, amount: int) -> Quote | None: ...
 
 
+class TokenSource(Protocol):
+    def discover(self, categories: list[str], interval: str, limit: int = 100) -> list[str]: ...
+
+    def info(self, mints: list[str]) -> dict[str, TokenInfo]: ...
+
+
 class VetSource(Protocol):
     def vet(self, pair: Pair, safety: Safety, now: datetime, x: XSignal | None = None) -> Vet: ...
 
@@ -62,6 +68,7 @@ class MemeDeps:
     notifier: Notifier
     now: Callable[[], datetime]
     x: XSource | None = None
+    tokens: TokenSource | None = None
 
 
 @dataclass
@@ -303,11 +310,7 @@ class _MemeCycle:
     def scan_and_enter(self) -> None:
         if not self.slots_left():
             return
-        try:
-            discovered = self.d.dex.discover()
-        except FETCH_ERRORS as exc:
-            self.error(f"descoberta falhou: {type(exc).__name__}")
-            return
+        discovered = self.discover()
         excluded = {p.mint for p in self.store.open_positions()} | self.store.blocked_ids(self.now)
         mints = [m for m in discovered if m not in excluded]
         self.report.discovered = len(mints)
@@ -319,7 +322,7 @@ class _MemeCycle:
             self.error(f"DexScreener falhou: {type(exc).__name__}")
             return
         candidates = []
-        for pair in pairs.values():
+        for pair in self.enrich(pairs).values():
             reason = market_rejection(pair, self.now, self.s)
             if reason:
                 self.report.skips[reason] += 1  # cheap check, not worth a row on the dashboard
@@ -330,6 +333,35 @@ class _MemeCycle:
         for pair, x in self.rank_by_x(candidates)[: self.s.max_candidates_checked]:
             if not self.slots_left() or not self.consider(pair, x):
                 break
+
+    def discover(self) -> list[str]:
+        """DexScreener's new profiles and boosts plus Jupiter's most traded / organic / trending lists."""
+        found: dict[str, None] = {}
+        try:
+            found.update(dict.fromkeys(self.d.dex.discover()))
+        except FETCH_ERRORS as exc:
+            self.error(f"descoberta no DexScreener falhou: {type(exc).__name__}")
+        if self.s.jup_discovery and self.d.tokens is not None:
+            try:
+                found.update(dict.fromkeys(self.d.tokens.discover(self.s.jup_categories, self.s.jup_interval)))
+            except FETCH_ERRORS as exc:
+                self.error(f"listas da Jupiter falharam: {type(exc).__name__}")
+        return list(found)
+
+    def enrich(self, pairs: dict[str, Pair]) -> dict[str, Pair]:
+        """Jupiter's organic score, and its X link when DexScreener has none."""
+        if self.d.tokens is None or not pairs:
+            return pairs
+        try:
+            info = self.d.tokens.info(list(pairs))
+        except FETCH_ERRORS as exc:
+            self.error(f"dados da Jupiter indisponíveis: {type(exc).__name__}")
+            return pairs
+        return {
+            mint: replace(pair, organic_score=info[mint].organic_score, x_url=pair.x_url or info[mint].twitter)
+            if mint in info else pair
+            for mint, pair in pairs.items()
+        }
 
     def rank_by_x(self, candidates: list[Pair]) -> list[tuple[Pair, XSignal | None]]:
         """Check what each token links to on X, drop the empty or dead claims, strongest narrative first."""
