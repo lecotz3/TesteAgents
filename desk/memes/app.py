@@ -170,6 +170,10 @@ def cmd_memes_live_check(app: MemesApp) -> int:
     if secrets.memes_live != LIVE_CONFIRMATION:
         print("MEMES_LIVE não está definido como I_UNDERSTAND no .env")
         ok = False
+    if app.secrets.telegram_bot_token is None or not app.secrets.telegram_chat_id:
+        print("Telegram não configurado: no modo real, avisos de ordem incerta e de venda que falhou precisam chegar "
+              "até você. Rode: python -m desk telegram-setup")
+        ok = False
     if secrets.memes_private_key is None:
         print("MEMES_PRIVATE_KEY ausente no .env")
         return _verdict(False)

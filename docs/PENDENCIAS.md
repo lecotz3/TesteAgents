@@ -8,13 +8,38 @@ Tudo que eu (Claude) não posso fazer por você: credenciais, dinheiro e decisõ
 
 | Item | Estado |
 |---|---|
-| Código | Pronto, 348 testes passando, na branch `feat/polymarket-desk` (PR #1 no GitHub) |
+| Código | Pronto, 361 testes passando, na branch `feat/polymarket-desk` (PR #1 no GitHub) |
 | Agendador do Windows | **Ligado.** `PolymarketDesk` roda um ciclo a cada 10 min (paper); `PolymarketDeskMemes` roda as memecoins a cada 3 min (paper); `PolymarketDeskMonthly` roda todo dia e relata 1x por mês |
 | Modo paper | Rodando sozinho: cada ciclo varre ~1000 mercados, ~470 passam no filtro, o Claude analisa até 3. Ainda sem entradas (nenhuma distorção ≥ 8pp) e sem erros |
 | Economia | O robô paga para existir: aluguel diário (assinatura rateada) + US$0,01 por análise, saindo do caixa dele. Se não lucrar mais que isso, é **desligado** na linha de 40% |
 | Painel | `scripts\dashboard.cmd` (duplo clique) ou `python -m desk dashboard` → http://127.0.0.1:8765 |
-| Modo real | **Bloqueado deste PC**: `python -m desk live-check` responde "Geobloqueio: BLOQUEADO (ConnectError)" porque esta rede não alcança `polymarket.com` |
+| Modo real (Polymarket) | **Bloqueado para você**: em 13/10 o próprio Polymarket respondeu `Geobloqueio: BLOQUEADO (país=BR região=SP)`. Veja "Caminho para o dinheiro real" |
 | Memecoins (Solana) | **Agente pronto em paper**: compra e vende sozinho com cotações reais da Jupiter, banca própria de US$100 (`state\memes.db`). Tarefa `PolymarketDeskMemes` a cada 3 min. No primeiro ciclo agendado (13/10, 11:33) o Claude vetou o único token que chegou até ele (sem fontes, possível cópia de outro ticker); ainda sem compras. Modo real pronto no código, travado até você criar a carteira (C4) |
+
+---
+
+## Caminho para o dinheiro real
+
+**Resposta curta:** hoje só um dos dois robôs pode receber dinheiro real com você, o de **memecoins**. E ele ainda não deveria, porque o paper não provou nada (até agora ele não fez nenhuma compra).
+
+### Polymarket: não dá, a partir do Brasil
+A checagem oficial do Polymarket (`python -m desk live-check`) respondeu **BLOQUEADO, país=BR, região=SP**. O robô recusa ordem real nessa situação, e isso não é falha dele: é a regra do Polymarket para o seu local. Usar VPN ou VPS em outro país para contornar isso viola os termos, e o Polymarket pode congelar o saldo. Por isso eu não configuro e não recomendo.
+
+O desk do Polymarket continua útil em **paper**: ele mede se o Claude acha distorções de verdade. Se um dia você estiver morando num país liberado, o caminho está na C2.
+
+### Memecoins: o caminho, em ordem
+Cada passo depende do anterior:
+
+1. **Telegram (C1).** Obrigatório: sem ele, o `memes-live-check` não libera o modo real. No modo real, um aviso de "compra incerta" ou "não conseguiu vender" exige que você confira a carteira.
+2. **Não deixar o PC dormir.** Hoje ele dorme depois de 3h parado, e dormindo o stop-loss não roda. Rode `powercfg /change standby-timeout-ac 0` (para desfazer, troque `0` por `180`). Deixe o PC na tomada, ligado e logado.
+3. **Paper provando que se paga (D8).** Pelo menos 2 semanas e 30 compras e vendas fechadas, com resultado positivo **depois** dos custos (`python -m desk memes-status` ou o painel). Se não passar, não ligue o real: o robô não tem vantagem e você descobriu de graça.
+4. **Carteira Solana dedicada (C4).** Carteira nova, só com a banca, mais ~0,05 SOL para taxas. Chave no `.env`, nunca no chat.
+5. **`memes-live-check` dizendo "PRONTO".** Ele confere: modo, as duas travas, chave válida, saldo de SOL e de USDC, e o Telegram.
+6. **Virar a chave.** Em `config.toml`, na seção `[memes]`: `mode = "live"` e `bankroll_start_usd` igual ao USDC da carteira. Renomeie `state\memes.db` para `memes-paper.db`.
+7. **Primeira semana com banca mínima** (US$30–50) e olho no Telegram e no painel. O modo real foi testado com transações simuladas, nunca contra a rede de verdade.
+8. **Impostos.** Ganho com cripto em carteira própria entra no imposto de renda e as regras mudaram recentemente. Confirme com um contador como declarar.
+
+Regras que não mudam no modo real: o robô **não saca** (tirar dinheiro é sempre com você) e cada token recebe no máximo 3% da banca. Caiu 40% do pico, ele é desligado.
 
 ---
 
@@ -54,7 +79,7 @@ Recomendo exigir **tudo** isto antes:
 Se não passar, o robô não tem vantagem, e tudo bem: você descobriu isso sem perder dinheiro.
 
 ### D3. De onde o modo real vai rodar
-Este PC não consegue nem consultar o geobloqueio do Polymarket: o nome `polymarket.com` não resolve nesta rede. Pode ser bloqueio do provedor, da rede corporativa ou do país. Por segurança, o robô **recusa** qualquer ordem real quando não consegue confirmar que a região é liberada.
+Em 13/10/2026 o `polymarket.com` voltou a responder nesta rede, e a checagem oficial de geobloqueio respondeu **BLOQUEADO (país=BR, região=SP)**. O robô **recusa** qualquer ordem real quando a região é bloqueada ou quando não consegue confirmar que ela é liberada.
 
 Opções:
 - **(a)** Rodar de uma rede doméstica num país onde o Polymarket é permitido para você.
@@ -157,7 +182,7 @@ O modo real usa o SDK oficial `polymarket-client` (Protocol V2, saldo em **pUSD*
    .venv\Scripts\python -m desk live-check
    ```
    Precisa terminar com **"PRONTO para modo real."** e mostrar o seu saldo.
-8. Em `config.toml`: `mode = "live"` e `bankroll_start_usd` igual ao saldo real. **Obrigatório:** renomeie a pasta `state` para `state-paper`. O robô se recusa a usar o registro do paper no modo real.
+8. Em `config.toml`: `mode = "live"` e `bankroll_start_usd` igual ao saldo real. **Obrigatório:** renomeie `state\desk.db` para `desk-paper.db` e `state\trades.txt` para `trades-paper.txt`. Não renomeie a pasta `state` inteira: ela guarda também o registro das memecoins. O robô se recusa a usar o registro do paper no modo real.
 9. Acompanhe o primeiro trade real de perto. O código do modo real foi testado com simulações, **nunca contra a exchange de verdade** (daqui não é possível). Por isso, comece com a banca mínima.
 
 O robô **não tem função de saque**. Sacar e resgatar mercados resolvidos é sempre com você, pelo site.
@@ -186,7 +211,7 @@ Na VPS não há navegador para logar no Claude. No **seu PC**, rode `claude setu
    uv sync --all-extras
    .venv\Scripts\python -m desk memes-live-check
    ```
-   Ele mostra o endereço público, o saldo de SOL e o de USDC, e precisa terminar com **"PRONTO para modo real nas memecoins."**
+   Ele mostra o endereço público e os saldos de SOL e de USDC, confere se o Telegram está configurado e precisa terminar com **"PRONTO para modo real nas memecoins."**
 6. Em `config.toml`, na seção `[memes]`: `mode = "live"` e `bankroll_start_usd` igual ao USDC na carteira.
 7. **Obrigatório:** renomeie `state\memes.db` para `state\memes-paper.db`. O agente se recusa a usar o registro do paper no modo real.
 8. Acompanhe as primeiras compras de perto. O código assina só a parte da carteira em cada transação da Jupiter e foi testado com transações simuladas, **nunca contra a rede de verdade**.

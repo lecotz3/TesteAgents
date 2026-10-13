@@ -155,7 +155,8 @@ def test_live_check_in_paper_is_not_ready(app, capsys):
 def test_live_check_reads_the_wallet(tmp_path, capsys):
     pytest.importorskip("solders")
     key, owner = generated_key()
-    a = live_app(tmp_path, f"MEMES_LIVE=I_UNDERSTAND\nMEMES_PRIVATE_KEY={key}\nMEMES_RPC_URL=https://rpc.test\n")
+    a = live_app(tmp_path, f"MEMES_LIVE=I_UNDERSTAND\nMEMES_PRIVATE_KEY={key}\nMEMES_RPC_URL=https://rpc.test\n"
+                           "TELEGRAM_BOT_TOKEN=123:abc\nTELEGRAM_CHAT_ID=42\n")
 
     def reply(request):
         body = request.read().decode()
@@ -179,3 +180,15 @@ def test_main_dispatches_memes_commands(tmp_path, monkeypatch):
     monkeypatch.setattr(memes_app, "cmd_memes_status", lambda a: seen.append(a.store) or 0)
     assert cli.main(["--config", str(write_config(tmp_path)), "--env-file", str(tmp_path / ".env"), "memes-status"]) == 0
     assert seen and not (tmp_path / "state" / "desk.db").exists()  # the desk's database is not touched
+
+
+def test_live_check_requires_telegram(tmp_path, capsys):
+    pytest.importorskip("solders")
+    key, _ = generated_key()
+    a = live_app(tmp_path, f"MEMES_LIVE=I_UNDERSTAND\nMEMES_PRIVATE_KEY={key}\n")
+    try:
+        assert memes_app.cmd_memes_live_check(a) == 1
+    finally:
+        a.close()
+    out = capsys.readouterr().out
+    assert "Telegram" in out and "NÃO está pronto" in out

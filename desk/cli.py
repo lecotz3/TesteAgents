@@ -68,9 +68,11 @@ def build_app(config_path: Path, env_path: Path) -> App:
     except ModeMismatch as exc:
         store.close()
         http.close()
+        db = settings.state_dir / "desk.db"
         raise ConfigError(
-            f'a pasta {settings.state_dir} guarda o registro do modo "{exc.stored}". Para o modo "{exc.requested}", '
-            f"renomeie-a (ex.: state-{exc.stored}) ou aponte state_dir para outra pasta no config.toml"
+            f'{db} guarda o registro do modo "{exc.stored}". Para o modo "{exc.requested}", renomeie desk.db para '
+            f"desk-{exc.stored}.db e trades.txt para trades-{exc.stored}.txt (não renomeie a pasta inteira: ela também "
+            "guarda o registro das memecoins, memes.db)"
         ) from exc
     journal = Journal(settings.state_dir / "trades.txt")
     return App(settings, secrets, store, journal, notifier, http)
@@ -239,6 +241,10 @@ def cmd_live_check(app: App) -> int:
         ok = False
     if app.secrets.desk_live != LIVE_CONFIRMATION:
         print("DESK_LIVE não está definido como I_UNDERSTAND no .env")
+        ok = False
+    if app.secrets.telegram_bot_token is None or not app.secrets.telegram_chat_id:
+        print("Telegram não configurado: no modo real, avisos de ordem incerta e de venda que falhou precisam chegar "
+              "até você. Rode: python -m desk telegram-setup")
         ok = False
     if app.secrets.poly_private_key is None:
         print("POLY_PRIVATE_KEY ausente no .env")

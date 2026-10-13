@@ -99,9 +99,9 @@ def test_main_reports_config_errors(tmp_path):
     assert cli.main(["--config", str(tmp_path / "missing.toml"), "status"]) == 2
 
 
-def live_check(tmp_path, monkeypatch, client, capsys):
+def live_check(tmp_path, monkeypatch, client, capsys, telegram="TELEGRAM_BOT_TOKEN=123:abc\nTELEGRAM_CHAT_ID=42\n"):
     env = tmp_path / ".env"
-    env.write_text("DESK_LIVE=I_UNDERSTAND\nPOLY_PRIVATE_KEY=0xkey\n", encoding="utf-8")
+    env.write_text("DESK_LIVE=I_UNDERSTAND\nPOLY_PRIVATE_KEY=0xkey\n" + telegram, encoding="utf-8")
     a = cli.build_app(write_config(tmp_path, 'mode = "live"\nbankroll_start_usd = 100.0\n'), env)
     monkeypatch.setattr(cli, "check_geoblock", lambda http: GeoStatus(blocked=False, country="PT", region=""))
     monkeypatch.setattr(cli.SdkTrader, "connect", classmethod(lambda cls, key, wallet: cls(client)))
@@ -128,8 +128,14 @@ def test_live_mode_refuses_the_paper_state_dir(tmp_path):
     paper = cli.build_app(write_config(tmp_path), tmp_path / ".env")
     paper.store.close()
     paper.http.close()
-    with pytest.raises(cli.ConfigError, match="state"):
+    with pytest.raises(cli.ConfigError, match="desk.db") as err:
         cli.build_app(write_config(tmp_path, 'mode = "live"\n'), tmp_path / ".env")
+    assert "memes" in str(err.value)  # renaming the whole folder would also reset the memecoin agent
+
+
+def test_live_check_requires_telegram(tmp_path, monkeypatch, capsys):
+    code, out = live_check(tmp_path, monkeypatch, FakeSdkClient(balance=100_000_000), capsys, telegram="")
+    assert code == 1 and "Telegram" in out and "NÃO está pronto" in out
 
 
 def test_crash_while_building_the_cycle_is_counted(app, monkeypatch):
