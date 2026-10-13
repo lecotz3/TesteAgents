@@ -8,8 +8,15 @@ from pathlib import Path
 
 from desk.models import Analysis, Evidence, Position, TradeRecord
 
-SCHEMA = """
+BASE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS equity (ts TEXT NOT NULL, equity REAL NOT NULL, cash REAL NOT NULL, positions_value REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS analyst_calls (ts TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS costs (ts TEXT NOT NULL, kind TEXT NOT NULL, amount REAL NOT NULL, detail TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS cycles (id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, payload TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS entry_blocks (market_id TEXT PRIMARY KEY, until TEXT NOT NULL, reason TEXT NOT NULL);
+"""
+DESK_SCHEMA = BASE_SCHEMA + """
 CREATE TABLE IF NOT EXISTS positions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     market_id TEXT NOT NULL, slug TEXT NOT NULL, question TEXT NOT NULL, category TEXT NOT NULL,
@@ -28,16 +35,11 @@ CREATE TABLE IF NOT EXISTS analyses (
     market_id TEXT PRIMARY KEY, created_at TEXT NOT NULL, backend TEXT NOT NULL, payload TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS analysis_failures (market_id TEXT PRIMARY KEY, failed_at TEXT NOT NULL, error TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS equity (ts TEXT NOT NULL, equity REAL NOT NULL, cash REAL NOT NULL, positions_value REAL NOT NULL);
-CREATE TABLE IF NOT EXISTS analyst_calls (ts TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS costs (ts TEXT NOT NULL, kind TEXT NOT NULL, amount REAL NOT NULL, detail TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS cycles (id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, payload TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS decisions (
     id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, market_id TEXT NOT NULL, slug TEXT NOT NULL,
     question TEXT NOT NULL, price REAL, fair_prob REAL, edge_pp REAL, confidence TEXT, decision TEXT NOT NULL,
     detail TEXT NOT NULL DEFAULT ''
 );
-CREATE TABLE IF NOT EXISTS entry_blocks (market_id TEXT PRIMARY KEY, until TEXT NOT NULL, reason TEXT NOT NULL);
 """
 
 
@@ -58,12 +60,19 @@ class ModeMismatch(Exception):
         self.requested = requested
 
 
-class Store:
+class Ledger:
+    """What every agent keeps: cash, peak, flags, mode, equity, costs, cycles, decisions and entry blocks.
+
+    Subclasses add their own tables (SCHEMA must include BASE_SCHEMA and a positions and decisions table)."""
+
+    SCHEMA = BASE_SCHEMA
+    DECISION_FIELDS: tuple[str, ...] = ()
+
     def __init__(self, path: Path, start_cash: float):
         path.parent.mkdir(parents=True, exist_ok=True)
         self._db = sqlite3.connect(path)
         self._db.row_factory = sqlite3.Row
-        self._db.executescript(SCHEMA)
+        self._db.executescript(self.SCHEMA)
         self._migrate()
         if self.get_meta("cash") is None:
             for key, value in (("cash", start_cash), ("peak", start_cash), ("halted", 0), ("consecutive_failures", 0)):
@@ -78,10 +87,7 @@ class Store:
         return store
 
     def _migrate(self) -> None:
-        columns = {r["name"] for r in self._db.execute("PRAGMA table_info(positions)").fetchall()}
-        if "event_id" not in columns:  # databases created before event grouping
-            with self._db:
-                self._db.execute("ALTER TABLE positions ADD COLUMN event_id TEXT")
+        """Schema upgrades for databases created by older versions."""
 
     def close(self) -> None:
         self._db.close()
@@ -152,6 +158,73 @@ class Store:
     def last_equity(self) -> float | None:
         row = self._db.execute("SELECT equity FROM equity ORDER BY rowid DESC LIMIT 1").fetchone()
         return float(row["equity"]) if row else None
+
+    # --- entry blocks -------------------------------------------------------
+    def block_entry(self, market_id: str, until: datetime, reason: str) -> None:
+        with self._db:
+            self._db.execute(
+                "INSERT OR REPLACE INTO entry_blocks (market_id, until, reason) VALUES (?, ?, ?)",
+                (market_id, _iso(until), reason),
+            )
+
+    def blocked_ids(self, now: datetime) -> set[str]:
+        rows = self._db.execute("SELECT market_id FROM entry_blocks WHERE until > ?", (_iso(now),)).fetchall()
+        return {r["market_id"] for r in rows}
+
+    # --- analyst usage ------------------------------------------------------
+    def record_analyst_call(self, ts: datetime) -> None:
+        with self._db:
+            self._db.execute("INSERT INTO analyst_calls (ts) VALUES (?)", (_iso(ts),))
+
+    def analyst_calls_since(self, cutoff: datetime) -> int:
+        return int(self._db.execute("SELECT COUNT(*) FROM analyst_calls WHERE ts >= ?", (_iso(cutoff),)).fetchone()[0])
+
+    # --- cycle history (what the dashboard shows) ---------------------------
+    def record_cycle(self, ts: datetime, report: dict, decisions: list[dict]) -> None:
+        with self._db:
+            self._db.execute("INSERT INTO cycles (ts, payload) VALUES (?, ?)", (_iso(ts), json.dumps(report)))
+            self._db.executemany(
+                f"INSERT INTO decisions (ts, {', '.join(self.DECISION_FIELDS)}) "
+                f"VALUES ({', '.join('?' * (len(self.DECISION_FIELDS) + 1))})",
+                [(_iso(ts), *(d.get(k, "") if k == "detail" else d.get(k) for k in self.DECISION_FIELDS))
+                 for d in decisions],
+            )
+
+    def recent_cycles(self, limit: int) -> list[dict]:
+        rows = self._db.execute("SELECT ts, payload FROM cycles ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [{**json.loads(r["payload"]), "ts": _dt(r["ts"])} for r in rows]
+
+    def recent_decisions(self, limit: int) -> list[dict]:
+        rows = self._db.execute("SELECT * FROM decisions ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [{**{k: r[k] for k in self.DECISION_FIELDS}, "ts": _dt(r["ts"])} for r in rows]
+
+    # --- operating costs (the desk pays to exist) ----------------------------
+    def charge(self, ts: datetime, kind: str, amount: float, detail: str) -> None:
+        """Debit an operating cost from cash and keep the receipt, atomically."""
+        with self._db:
+            self._db.execute("INSERT INTO costs (ts, kind, amount, detail) VALUES (?, ?, ?, ?)",
+                             (_iso(ts), kind, amount, detail[:200]))
+            self._db.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('cash', ?)", (repr(self.cash() - amount),))
+
+    def costs_since(self, cutoff: datetime) -> float:
+        row = self._db.execute("SELECT COALESCE(SUM(amount), 0) FROM costs WHERE ts >= ?", (_iso(cutoff),)).fetchone()
+        return float(row[0])
+
+    def total_costs(self) -> float:
+        return float(self._db.execute("SELECT COALESCE(SUM(amount), 0) FROM costs").fetchone()[0])
+
+
+class Store(Ledger):
+    """The Polymarket desk."""
+
+    SCHEMA = DESK_SCHEMA
+    DECISION_FIELDS = ("market_id", "slug", "question", "price", "fair_prob", "edge_pp", "confidence", "decision", "detail")
+
+    def _migrate(self) -> None:
+        columns = {r["name"] for r in self._db.execute("PRAGMA table_info(positions)").fetchall()}
+        if "event_id" not in columns:  # databases created before event grouping
+            with self._db:
+                self._db.execute("ALTER TABLE positions ADD COLUMN event_id TEXT")
 
     # --- positions ----------------------------------------------------------
     def add_position(self, pos: Position) -> int:
@@ -270,59 +343,3 @@ class Store:
             "SELECT market_id FROM analysis_failures WHERE failed_at >= ?", (_iso(cutoff),)
         ).fetchall()
         return {r["market_id"] for r in rows}
-
-    # --- entry blocks -------------------------------------------------------
-    def block_entry(self, market_id: str, until: datetime, reason: str) -> None:
-        with self._db:
-            self._db.execute(
-                "INSERT OR REPLACE INTO entry_blocks (market_id, until, reason) VALUES (?, ?, ?)",
-                (market_id, _iso(until), reason),
-            )
-
-    def blocked_ids(self, now: datetime) -> set[str]:
-        rows = self._db.execute("SELECT market_id FROM entry_blocks WHERE until > ?", (_iso(now),)).fetchall()
-        return {r["market_id"] for r in rows}
-
-    # --- analyst usage ------------------------------------------------------
-    def record_analyst_call(self, ts: datetime) -> None:
-        with self._db:
-            self._db.execute("INSERT INTO analyst_calls (ts) VALUES (?)", (_iso(ts),))
-
-    def analyst_calls_since(self, cutoff: datetime) -> int:
-        return int(self._db.execute("SELECT COUNT(*) FROM analyst_calls WHERE ts >= ?", (_iso(cutoff),)).fetchone()[0])
-
-    # --- cycle history (what the dashboard shows) ---------------------------
-    DECISION_FIELDS = ("market_id", "slug", "question", "price", "fair_prob", "edge_pp", "confidence", "decision", "detail")
-
-    def record_cycle(self, ts: datetime, report: dict, decisions: list[dict]) -> None:
-        with self._db:
-            self._db.execute("INSERT INTO cycles (ts, payload) VALUES (?, ?)", (_iso(ts), json.dumps(report)))
-            self._db.executemany(
-                "INSERT INTO decisions (ts, market_id, slug, question, price, fair_prob, edge_pp, confidence, decision, "
-                "detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [(_iso(ts), *(d.get(k, "") if k in ("detail",) else d.get(k) for k in self.DECISION_FIELDS))
-                 for d in decisions],
-            )
-
-    def recent_cycles(self, limit: int) -> list[dict]:
-        rows = self._db.execute("SELECT ts, payload FROM cycles ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
-        return [{**json.loads(r["payload"]), "ts": _dt(r["ts"])} for r in rows]
-
-    def recent_decisions(self, limit: int) -> list[dict]:
-        rows = self._db.execute("SELECT * FROM decisions ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
-        return [{**{k: r[k] for k in self.DECISION_FIELDS}, "ts": _dt(r["ts"])} for r in rows]
-
-    # --- operating costs (the desk pays to exist) ----------------------------
-    def charge(self, ts: datetime, kind: str, amount: float, detail: str) -> None:
-        """Debit an operating cost from cash and keep the receipt, atomically."""
-        with self._db:
-            self._db.execute("INSERT INTO costs (ts, kind, amount, detail) VALUES (?, ?, ?, ?)",
-                             (_iso(ts), kind, amount, detail[:200]))
-            self._db.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('cash', ?)", (repr(self.cash() - amount),))
-
-    def costs_since(self, cutoff: datetime) -> float:
-        row = self._db.execute("SELECT COALESCE(SUM(amount), 0) FROM costs WHERE ts >= ?", (_iso(cutoff),)).fetchone()
-        return float(row[0])
-
-    def total_costs(self) -> float:
-        return float(self._db.execute("SELECT COALESCE(SUM(amount), 0) FROM costs").fetchone()[0])
