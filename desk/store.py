@@ -30,6 +30,12 @@ CREATE TABLE IF NOT EXISTS analyses (
 CREATE TABLE IF NOT EXISTS analysis_failures (market_id TEXT PRIMARY KEY, failed_at TEXT NOT NULL, error TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS equity (ts TEXT NOT NULL, equity REAL NOT NULL, cash REAL NOT NULL, positions_value REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS analyst_calls (ts TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS cycles (id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, payload TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS decisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, market_id TEXT NOT NULL, slug TEXT NOT NULL,
+    question TEXT NOT NULL, price REAL, fair_prob REAL, edge_pp REAL, confidence TEXT, decision TEXT NOT NULL,
+    detail TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS entry_blocks (market_id TEXT PRIMARY KEY, until TEXT NOT NULL, reason TEXT NOT NULL);
 """
 
@@ -61,6 +67,14 @@ class Store:
         if self.get_meta("cash") is None:
             for key, value in (("cash", start_cash), ("peak", start_cash), ("halted", 0), ("consecutive_failures", 0)):
                 self.set_meta(key, str(value))
+
+    @classmethod
+    def open_readonly(cls, path: Path) -> Store:
+        """Read-only view for the dashboard: never creates tables, never takes a write lock."""
+        store = cls.__new__(cls)
+        store._db = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, check_same_thread=False)
+        store._db.row_factory = sqlite3.Row
+        return store
 
     def _migrate(self) -> None:
         columns = {r["name"] for r in self._db.execute("PRAGMA table_info(positions)").fetchall()}
@@ -125,6 +139,10 @@ class Store:
             )
         if equity > self.peak():
             self.reset_peak(equity)
+
+    def equity_history(self, since: datetime) -> list[tuple[datetime, float]]:
+        rows = self._db.execute("SELECT ts, equity FROM equity WHERE ts >= ? ORDER BY rowid", (_iso(since),)).fetchall()
+        return [(_dt(r["ts"]), float(r["equity"])) for r in rows]
 
     def last_equity(self) -> float | None:
         row = self._db.execute("SELECT equity FROM equity ORDER BY rowid DESC LIMIT 1").fetchone()
@@ -267,3 +285,24 @@ class Store:
 
     def analyst_calls_since(self, cutoff: datetime) -> int:
         return int(self._db.execute("SELECT COUNT(*) FROM analyst_calls WHERE ts >= ?", (_iso(cutoff),)).fetchone()[0])
+
+    # --- cycle history (what the dashboard shows) ---------------------------
+    DECISION_FIELDS = ("market_id", "slug", "question", "price", "fair_prob", "edge_pp", "confidence", "decision", "detail")
+
+    def record_cycle(self, ts: datetime, report: dict, decisions: list[dict]) -> None:
+        with self._db:
+            self._db.execute("INSERT INTO cycles (ts, payload) VALUES (?, ?)", (_iso(ts), json.dumps(report)))
+            self._db.executemany(
+                "INSERT INTO decisions (ts, market_id, slug, question, price, fair_prob, edge_pp, confidence, decision, "
+                "detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [(_iso(ts), *(d.get(k, "") if k in ("detail",) else d.get(k) for k in self.DECISION_FIELDS))
+                 for d in decisions],
+            )
+
+    def recent_cycles(self, limit: int) -> list[dict]:
+        rows = self._db.execute("SELECT ts, payload FROM cycles ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [{**json.loads(r["payload"]), "ts": _dt(r["ts"])} for r in rows]
+
+    def recent_decisions(self, limit: int) -> list[dict]:
+        rows = self._db.execute("SELECT * FROM decisions ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [{**{k: r[k] for k in self.DECISION_FIELDS}, "ts": _dt(r["ts"])} for r in rows]

@@ -115,3 +115,34 @@ def test_database_with_history_but_no_mode_counts_as_paper(store):
     store.record_equity(NOW, 100.0, 100.0, 0.0)  # written before modes were pinned: only paper existed
     with pytest.raises(ModeMismatch):
         store.ensure_mode("live")
+
+
+def test_cycle_history_keeps_report_and_decisions(store):
+    decision = {"market_id": "1", "slug": "fed", "question": "Fed hike?", "price": 0.62, "fair_prob": 0.74,
+                "edge_pp": 12.0, "confidence": "medium", "decision": "entered", "detail": "9.67 cotas"}
+    store.record_cycle(NOW, {"scanned": 968, "skips": {"prefilter_no_edge": 5}}, [decision])
+    store.record_cycle(NOW + timedelta(minutes=10), {"scanned": 970, "skips": {}}, [])
+    cycles = store.recent_cycles(5)
+    assert [c["scanned"] for c in cycles] == [970, 968]  # newest first
+    assert cycles[1]["ts"] == NOW and cycles[1]["skips"] == {"prefilter_no_edge": 5}
+    [d] = store.recent_decisions(10)
+    assert d["question"] == "Fed hike?" and d["decision"] == "entered" and d["ts"] == NOW
+
+
+def test_equity_history_since(store):
+    store.record_equity(NOW - timedelta(days=2), 90.0, 90.0, 0.0)
+    store.record_equity(NOW, 101.0, 80.0, 21.0)
+    assert store.equity_history(NOW - timedelta(days=1)) == [(NOW, 101.0)]
+
+
+def test_readonly_store_reads_but_cannot_write(tmp_path):
+    rw = Store(tmp_path / "desk.db", start_cash=100.0)
+    rw.record_equity(NOW, 100.0, 100.0, 0.0)
+    rw.close()
+    ro = Store.open_readonly(tmp_path / "desk.db")
+    try:
+        assert ro.cash() == 100.0 and ro.last_equity() == 100.0
+        with pytest.raises(Exception):
+            ro.adjust_cash(1.0)
+    finally:
+        ro.close()

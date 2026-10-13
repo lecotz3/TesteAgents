@@ -391,3 +391,17 @@ def test_unparseable_book_does_not_crash_the_cycle(env):
     report = run_cycle(deps)
     assert report.equity == pytest.approx(100.0)
     assert any("livro indisponível" in e for e in report.errors)
+
+
+def test_cycle_is_recorded_with_its_decisions(env):
+    tmp_path, store = env
+    buy = make_market(id="1", slug="buy-me", token_ids=("1a", "1b"), question="Will it rain?")
+    flat = make_market(id="2", slug="flat", token_ids=("2a", "2b"), question="Will it snow?")
+    books = {**books_for(buy), **books_for(flat)}
+    run_cycle(make_deps(tmp_path, store, [buy, flat], books, FakeAnalyst({"1": 0.74, "2": 0.62})))
+    [cycle] = store.recent_cycles(1)
+    assert cycle["entries"] == 1 and cycle["scanned"] == 2 and cycle["ts"] == NOW
+    by_slug = {d["slug"]: d for d in store.recent_decisions(10)}
+    assert by_slug["buy-me"]["decision"] == "entered" and by_slug["buy-me"]["question"] == "Will it rain?"
+    assert by_slug["buy-me"]["fair_prob"] == pytest.approx(0.74) and by_slug["buy-me"]["price"] == pytest.approx(0.62)
+    assert by_slug["flat"]["decision"] == "prefilter_no_edge"

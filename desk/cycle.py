@@ -65,6 +65,13 @@ class CycleReport:
     skips: Counter = field(default_factory=Counter)
     errors: list[str] = field(default_factory=list)
 
+    def as_dict(self) -> dict:
+        return {
+            "equity": self.equity, "scanned": self.scanned, "candidates": self.candidates, "analyzed": self.analyzed,
+            "entries": self.entries, "exits": self.exits, "settled": self.settled, "halted": self.halted,
+            "skips": dict(self.skips), "errors": list(self.errors),
+        }
+
     def summary(self) -> str:
         skips = ", ".join(f"{k}={v}" for k, v in sorted(self.skips.items())) or "-"
         return (
@@ -88,6 +95,7 @@ class _Cycle:
         self.analyst_failures = 0
         self.analyst_calls = 0
         self.cap_reached = False
+        self.decisions: list[dict] = []
         self.books: dict[str, OrderBook] = {}
         self.held_markets: dict[str, Market] = {}
 
@@ -103,11 +111,21 @@ class _Cycle:
         self.report.halted = self.store.is_halted()
         for error in self.report.errors:
             log.warning(error)
+        self.store.record_cycle(self.now, self.report.as_dict(), self.decisions)
         return self.report
 
     # --- helpers --------------------------------------------------------------
     def error(self, message: str) -> None:
         self.report.errors.append(message)
+
+    def decide(self, market: Market, analysis: Analysis, decision: str, detail: str = "") -> None:
+        """Remember what the desk concluded about a market this cycle (shown on the dashboard)."""
+        self.decisions.append({
+            "market_id": market.id, "slug": market.slug, "question": market.question,
+            "price": market.outcome_prices[0], "fair_prob": analysis.fair_prob,
+            "edge_pp": round(quick_edge_pp(market, analysis), 1), "confidence": analysis.confidence,
+            "decision": decision, "detail": detail,
+        })
 
     def book(self, token_id: str) -> OrderBook:
         if token_id not in self.books:
@@ -318,6 +336,7 @@ class _Cycle:
                 continue
             if quick_edge_pp(market, analysis) <= self.s.risk.min_edge_pp - PREFILTER_SLACK_PP:
                 self.report.skips["prefilter_no_edge"] += 1
+                self.decide(market, analysis, "prefilter_no_edge")
                 continue
             if self.now - analysis.created_at > timedelta(minutes=a.entry_analysis_max_age_minutes):
                 # Never buy on a view older than the news: redo it, it is rare and worth the call.
@@ -327,11 +346,13 @@ class _Cycle:
                     continue
                 if quick_edge_pp(market, analysis) <= self.s.risk.min_edge_pp - PREFILTER_SLACK_PP:
                     self.report.skips["prefilter_no_edge"] += 1
+                    self.decide(market, analysis, "prefilter_no_edge", "reanalisado antes de comprar")
                     continue
             try:
                 books = (self.book(market.token_ids[0]), self.book(market.token_ids[1]))
             except FETCH_ERRORS as exc:
                 self.error(f"livro indisponível para {market.slug}: {type(exc).__name__}")
+                self.decide(market, analysis, "book_unavailable")
                 continue
             plan = evaluate_entry(
                 market=market, analysis=analysis, books=books, equity=self.report.equity,
@@ -340,9 +361,15 @@ class _Cycle:
             )
             if isinstance(plan, Skip):
                 self.report.skips[plan.reason] += 1
+                self.decide(market, analysis, plan.reason)
                 continue
-            if self.enter(market, analysis, plan, books[plan.outcome_index]) and market.event_id is not None:
-                held_events.add(market.event_id)
+            if self.enter(market, analysis, plan, books[plan.outcome_index]):
+                self.decide(market, analysis, "entered",
+                            f"{market.outcomes[plan.outcome_index]}: {plan.shares:.2f} cotas, vantagem {plan.edge_pp:.1f}pp")
+                if market.event_id is not None:
+                    held_events.add(market.event_id)
+            else:
+                self.decide(market, analysis, "buy_failed")
 
     def enter(self, market: Market, analysis: Analysis, plan: EntryPlan, book: OrderBook) -> bool:
         try:
