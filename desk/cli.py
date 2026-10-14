@@ -267,10 +267,24 @@ def cmd_live_check(app: App) -> int:
     return 0 if ok else 1
 
 
+def _dashboard_running(http: httpx.Client, url: str) -> bool:
+    """True when our own panel already answers at `url` (e.g. the logon task started it in the background)."""
+    try:
+        return "now" in http.get(url + "api/state", timeout=5.0).json()
+    except (httpx.HTTPError, ValueError):
+        return False
+
+
 def cmd_dashboard(app: App, port: int = 8765, open_browser: bool = True) -> int:
     try:
         server = make_server(app.settings.state_dir, app.settings, port=port)
     except OSError as exc:
+        url = f"http://127.0.0.1:{port}/"
+        if _dashboard_running(app.http, url):
+            print(f"O painel já está rodando em {url}")
+            if open_browser:
+                webbrowser.open(url)
+            return 0
         print(f"Não consegui abrir a porta {port} ({exc}). O painel já está aberto? Tente --port 8766.")
         return 2
     url = f"http://127.0.0.1:{server.server_address[1]}/"

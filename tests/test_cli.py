@@ -1,4 +1,6 @@
+import httpx
 import pytest
+import respx
 
 from desk import cli
 from desk.cycle import CycleReport
@@ -186,6 +188,32 @@ def test_dashboard_command_serves_on_localhost(app, monkeypatch, capsys):
     assert served == {"state_dir": app.settings.state_dir, "yes": True, "closed": True}
     assert opened == ["http://127.0.0.1:8765/"]
     assert "http://127.0.0.1:8765/" in capsys.readouterr().out
+
+
+def busy_port(state_dir, settings, **kwargs):
+    raise OSError("address already in use")
+
+
+@respx.mock
+def test_dashboard_command_opens_the_panel_already_running_in_the_background(app, monkeypatch, capsys):
+    respx.get("http://127.0.0.1:8765/api/state").mock(return_value=httpx.Response(200, json={"now": "x"}))
+    opened = []
+    monkeypatch.setattr(cli, "make_server", busy_port)
+    monkeypatch.setattr(cli.webbrowser, "open", opened.append)
+    assert cli.cmd_dashboard(app, port=8765, open_browser=True) == 0
+    assert opened == ["http://127.0.0.1:8765/"]
+    assert "já está rodando" in capsys.readouterr().out
+
+
+@respx.mock
+def test_dashboard_command_reports_a_port_taken_by_something_else(app, monkeypatch, capsys):
+    respx.get("http://127.0.0.1:8765/api/state").mock(side_effect=httpx.ConnectError("refused"))
+    opened = []
+    monkeypatch.setattr(cli, "make_server", busy_port)
+    monkeypatch.setattr(cli.webbrowser, "open", opened.append)
+    assert cli.cmd_dashboard(app, port=8765, open_browser=True) == 2
+    assert opened == []
+    assert "--port 8766" in capsys.readouterr().out
 
 
 def test_monthly_report_includes_the_memecoin_agent(app):
