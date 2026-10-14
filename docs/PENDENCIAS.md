@@ -4,17 +4,28 @@ Tudo que eu (Claude) não posso fazer por você: credenciais, dinheiro e decisõ
 
 > Regra de ouro: **nunca cole chave privada, seed ou senha em chat nenhum** (nem comigo). Elas vão só no arquivo `.env`, na sua máquina, e o `.env` nunca vai para o git.
 
-## Situação em 13/10/2026
+## Situação em 13/10/2026 (noite)
 
 | Item | Estado |
 |---|---|
-| Código | Pronto, 484 testes passando, direto na `main` (o PR #1 já foi juntado; daqui em diante os commits vão direto na `main`, sem PR) |
-| Agendador do Windows | **Ligado.** `PolymarketDesk` roda um ciclo a cada 10 min (paper); `PolymarketDeskMemes` roda as memecoins a cada 3 min (paper); `PolymarketDeskMemesExits` confere as saídas das memecoins a cada 1 min; `PolymarketDeskMonthly` roda todo dia e relata 1x por mês |
-| Modo paper | Rodando sozinho: cada ciclo varre ~1000 mercados e o Claude analisa até 3. Desde 13/10 à noite a sua rede às vezes não resolve os endereços do Polymarket (DNS); nesses ciclos ele não varre nada e registra o erro. É o mesmo bloqueio do Brasil: não contorne |
+| **Onde os robôs rodam** | **No desktop (DESKTOP-7FOLHUU)**, desde 13/10 às 21:47, por decisão sua. É um PC de mesa, sem bateria, configurado para nunca dormir na tomada. **Falta você desligar as tarefas no notebook** (item A1 logo abaixo) |
+| Código | Pronto, 499 testes passando, direto na `main` |
+| Agendador do Windows | **Ligado neste desktop.** `PolymarketDesk` a cada 10 min; `PolymarketDeskMemes` (memecoins) a cada 3 min; `PolymarketDeskMemesExits` (saídas) a cada 1 min; `PolymarketDeskMemesReview` (revisão dos filtros) a cada hora; `PolymarketDeskMonthly` todo dia; `PolymarketDeskDashboard` mantém o painel ligado |
+| Painel | **Sempre ligado:** http://127.0.0.1:8765, atalho **"Painel dos robos"** na área de trabalho. Sobe sozinho quando você entra no Windows |
+| Polymarket (paper) | O agendador roda, mas **o DNS desta rede recusa os endereços do Polymarket** (`DNS operation refused`): os ciclos não varrem nada, e o painel diz isso. É o bloqueio do Brasil: não contorne (nada de VPN nem de trocar o DNS para fugir dele). Se a rede voltar a resolver, ele volta a varrer sozinho. Enquanto isso, ele paga o aluguel diário sem poder operar e chega à linha de desligamento em ~33 dias; esse resultado não mede nada. Para pausar só ele: desative `PolymarketDesk` no Agendador de Tarefas |
 | Economia | O robô paga para existir: aluguel diário (assinatura rateada) + US$0,01 por análise, saindo do caixa dele. Se não lucrar mais que isso, é **desligado** na linha de 40% |
-| Painel | `scripts\dashboard.cmd` (duplo clique) ou `python -m desk dashboard` → http://127.0.0.1:8765 |
 | Modo real (Polymarket) | **Bloqueado para você**: em 13/10 o próprio Polymarket respondeu `Geobloqueio: BLOQUEADO (país=BR região=SP)`. Veja "Caminho para o dinheiro real" |
-| Memecoins (Solana) | **Agente pronto em paper**: compra e vende sozinho com cotações reais da Jupiter, banca própria de US$100 (`state\memes.db`). Ciclo completo a cada 3 min e saídas a cada 1 min. Primeiras compras em 13/10: VEIL e SEALS (paper). Modo real pronto e protegido no código (ordem pior que a aprovada é recusada, resposta perdida é conferida na carteira, aluguel das contas volta, aviso de SOL baixo e de PC dormindo, `memes-sell-all`), travado até você ligar |
+| Memecoins (Solana) | **Rodando em paper neste desktop**, com banca nova de US$100 (o histórico do notebook era de poucas horas e ficou lá). Compra e vende sozinho com cotações reais da Jupiter. Corrigido em 13/10: o FxTwitter responde "não encontrado" para contas que existem em ~1 de cada 3 chamadas, e isso vendia posições boas minutos depois da compra (VEIL e CRAWLER). Agora o "post/perfil apagado" só vale depois de 3 respostas seguidas e 5 minutos sumido. Modo real pronto e protegido no código, travado até você ligar |
+| Revisão dos filtros | **Nova:** `memes-review` e a tabela "Os filtros acertam?" no painel mostram, para cada motivo de compra ou rejeição, o que teria acontecido nas 24h seguintes. Os primeiros resultados aparecem 24h depois das primeiras decisões (14/10 à noite) |
+
+## A1. Desligar os robôs no notebook (faça agora)
+Os robôs agora rodam neste desktop. Se o notebook continuar ligado com as tarefas, ele roda uma segunda cópia: em paper isso cria um histórico separado e confuso e **gasta a sua cota do Claude duas vezes**. No modo real seriam duas cópias operando a mesma carteira. No notebook:
+1. Abra o PowerShell na pasta do projeto.
+2. Rode `powershell -ExecutionPolicy Bypass -File scripts\uninstall_task.ps1`.
+3. Confira com `Get-ScheduledTask PolymarketDesk*`: não deve aparecer nada.
+4. Opcional: `git pull` para ficar com o código novo, se for continuar usando o notebook para desenvolver.
+
+A pasta `state\` do notebook pode ficar lá como arquivo. **Não a copie para cá**: o desktop já começou o próprio histórico, e copiar por cima apagaria o que ele registrou.
 
 ---
 
@@ -31,7 +42,7 @@ O desk do Polymarket continua útil em **paper**: ele mede se o Claude acha dist
 Cada passo depende do anterior:
 
 1. **Telegram (C1).** Obrigatório: sem ele, o `memes-live-check` não libera o modo real. No modo real, um aviso de "compra incerta" ou "não conseguiu vender" exige que você confira a carteira.
-2. **Não deixar o PC dormir.** Visto em 13/10: o notebook estava **na bateria** (21%) e, 30 min depois da última atividade, a tela apagou e o Windows entrou em espera moderna (20:57–21:31). Nesse tempo nada rodou, nem o stop-loss. Deixe o notebook **na tomada** e rode `powercfg /change standby-timeout-ac 0` e `powercfg /change monitor-timeout-ac 0` (para desfazer: `180` e `30` no lugar do `0`). Neste tipo de Windows, a tela apagar já leva à espera. Mantenha-o ligado e logado. Se o agente ficar mais de 15 minutos sem rodar com posições abertas, ele avisa no Telegram quando voltar. Stop-loss na própria Jupiter (que rodaria com o PC desligado) exige no mínimo US$10 por ordem, e as compras aqui são de US$3; com uma banca bem maior isso passa a valer a pena.
+2. **Não deixar o PC dormir.** Resolvido com a mudança para o desktop: conferido em 13/10, ele está configurado para nunca entrar em espera nem hibernar na tomada, e não usa a "espera moderna" que parou o notebook (20:57–21:31, na bateria). Mantenha-o ligado e logado (as tarefas rodam com a sua sessão aberta; tela bloqueada não tem problema). Uma queda de energia ou um reinício do Windows para tudo até você entrar de novo. Se o agente ficar mais de 15 minutos sem rodar com posições abertas, ele avisa no Telegram quando voltar. Stop-loss na própria Jupiter (que rodaria com o PC desligado) exige no mínimo US$10 por ordem, e as compras aqui são de US$3; com uma banca bem maior isso passa a valer a pena.
 3. **Paper provando que se paga (D8).** Pelo menos 2 semanas e 30 compras e vendas fechadas, com resultado positivo **depois** dos custos. O painel mostra isso no cartão "Pronto p/ dinheiro real?" (também no `memes-status` e no relatório mensal). Se não passar, não ligue o real: o robô não tem vantagem e você descobriu de graça.
 4. **Carteira Solana dedicada (C4).** Carteira nova, só com a banca, mais ~0,1 SOL para taxas. Chave no `.env`, nunca no chat.
 5. **`memes-live-check` dizendo "PRONTO".** Ele confere: modo, as duas travas, chave válida, saldo de SOL e de USDC, e o Telegram.
@@ -45,13 +56,13 @@ Regras que não mudam no modo real: o robô **não saca** (tirar dinheiro é sem
 
 ## 0. Ver o que está acontecendo
 
-Dê duplo clique em `scripts\dashboard.cmd`. Ele abre o painel no navegador, que se atualiza a cada 30s e mostra:
+Abra o atalho **"Painel dos robos"** na área de trabalho (ou http://127.0.0.1:8765, ou duplo clique em `scripts\dashboard.cmd`). O painel fica sempre ligado em segundo plano, se atualiza a cada 30s e mostra:
 - **Vida do robô:** equity, quanto ganhou operando, quanto custou existir, dias de fôlego até ser desligado e o gráfico contra a linha de desligamento.
 - **O que o robô decidiu:** cada mercado que o Claude analisou, com preço, valor justo, vantagem e o motivo de ter entrado ou pulado.
 - **Posições, trades e ciclos**, além do diário (`trades.txt`) e do log técnico.
-- **Memecoins (Solana)**, mais abaixo: banca, custo, queda até a linha de desligamento, posições (com link para o fomo.family), os tokens que ele checou a fundo e por que comprou ou não, compras e vendas.
+- **Memecoins (Solana)**, no topo: banca, custo, queda até a linha de desligamento, posições (com link para o fomo.family), os tokens que ele checou a fundo e por que comprou ou não, **"Os filtros acertam?"**, compras e vendas.
 
-O painel só lê dados e fica acessível apenas neste computador. Para fechá-lo, feche a janela preta.
+O painel só lê dados e fica acessível apenas neste computador. Ele roda como a tarefa `PolymarketDeskDashboard`; o `uninstall_task.ps1` o desliga junto com os robôs.
 
 O agendador já está ligado. Para conferir: `Get-ScheduledTask PolymarketDesk*`. Para desligar: `scripts\uninstall_task.ps1`. Para religar: `scripts\install_task.ps1`.
 
@@ -232,7 +243,8 @@ Se a resposta de uma troca se perder, o agente pergunta de novo à Jupiter por a
 .venv\Scripts\python -m desk memes         # força um ciclo das memecoins agora
 .venv\Scripts\python -m desk memes-resume  # religa o agente de memecoins depois de desligado
 .venv\Scripts\python -m desk memes-sell-all --yes  # emergência: vende todas as memecoins agora e pausa as compras
-powershell -ExecutionPolicy Bypass -File scripts\uninstall_task.ps1   # desliga o agendador (as três tarefas)
+.venv\Scripts\python -m desk memes-review  # cada filtro evitou perdedores? (também roda sozinho de hora em hora)
+powershell -ExecutionPolicy Bypass -File scripts\uninstall_task.ps1   # desliga o agendador (todas as tarefas e o painel)
 powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1     # liga de novo
 ```
 

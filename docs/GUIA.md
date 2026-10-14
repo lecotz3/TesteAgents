@@ -37,20 +37,21 @@ Um ciclo analisa até 6 mercados novos (≈1–3 min cada com busca na web). Cic
 ## Deixar rodando sozinho
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1     # liga (a cada 10 min)
-powershell -ExecutionPolicy Bypass -File scripts\uninstall_task.ps1   # desliga
+powershell -ExecutionPolicy Bypass -File scripts\install_task.ps1     # liga as 6 tarefas e o painel
+powershell -ExecutionPolicy Bypass -File scripts\uninstall_task.ps1   # desliga tudo
 ```
 
-A tarefa roda só com sua sessão do Windows aberta (o `claude` usa seu login). O PC não pode dormir — ajuste em Configurações > Energia.
+As tarefas rodam só com sua sessão do Windows aberta (o `claude` usa seu login). O PC não pode dormir — ajuste em Configurações > Energia. Rode os robôs **em um computador só** (veja `docs/PENDENCIAS.md`, "Onde os robôs rodam").
 
 ## Painel
 
-Dê duplo clique em `scripts\dashboard.cmd`, ou rode `.venv\Scripts\python -m desk dashboard`. O painel abre em http://127.0.0.1:8765 e se atualiza sozinho a cada 30s. Ele mostra:
+O painel fica em http://127.0.0.1:8765. O `install_task.ps1` o deixa sempre ligado: ele sobe sozinho quando você entra no Windows, sem janela, e é conferido a cada 5 minutos. Para abrir, use o atalho **"Painel dos robos"** na área de trabalho, o `scripts\dashboard.cmd` ou o endereço no navegador. Ele se atualiza a cada 30s e mostra:
 - equity e linha de desligamento;
 - ganho operando contra custo de existir;
 - fôlego em dias;
 - o que o Claude concluiu sobre cada mercado e por que o robô entrou ou pulou;
-- posições, trades, ciclos, diário e log.
+- posições, trades, ciclos, diário e log;
+- nas memecoins, a tabela **"Os filtros acertam?"** (ver `memes-review` abaixo).
 
 É somente leitura e só abre neste computador.
 
@@ -130,7 +131,7 @@ Segundo agente, com banca, registro e diário próprios (`state\memes.db`, `stat
 | Custo real | Código + Jupiter | Ida e volta ≤ 5%, impacto ≤ 2%, existe rota de venda, preço da cotação bate com o DexScreener |
 | Reputação | Claude (só veta) | Recebe os dados do X e busca o token pelo endereço na web e no X: golpe, cópia, imitação, conta comprada, post que não é sobre o token. Veta por sinal de alerta, não por falta de notícia (token de poucas horas quase nunca tem) |
 | Compra | Código | 3% da banca, até 4 tokens ao mesmo tempo |
-| Venda | Código | Stop -30%, metade ao dobrar, stop móvel de 30% do pico, liquidez caindo pela metade, 24h no máximo, e **vende tudo se o post/perfil do X do token for apagado** depois da compra |
+| Venda | Código | Stop -30%, metade ao dobrar, stop móvel de 30% do pico, liquidez caindo pela metade, 24h no máximo, e **vende tudo se o post/perfil do X do token for apagado** depois da compra (confirmado: 3 respostas "não encontrado" seguidas e 5 minutos sumido, porque o FxTwitter erra "não encontrado" em ~1 de cada 3 chamadas) |
 
 Ele roda em dois ritmos. A cada **3 minutos**, o ciclo completo descobre, filtra, consulta o Claude e compra. A cada **1 minuto**, uma rodada leve só confere preços e regras de saída, sem descobrir nem consultar o Claude, para o stop não esperar uma checagem do Claude terminar. As duas nunca vendem a mesma posição ao mesmo tempo.
 
@@ -141,7 +142,14 @@ Ele roda em dois ritmos. A cada **3 minutos**, o ciclo completo descobre, filtra
 .venv\Scripts\python -m desk memes-live-check  # confere carteira e saldos do modo real (não negocia)
 .venv\Scripts\python -m desk memes-resume      # religa depois de desligado
 .venv\Scripts\python -m desk memes-sell-all --yes  # emergência: vende tudo agora e pausa as compras
+.venv\Scripts\python -m desk memes-review      # cada filtro evitou perdedores? (roda sozinho de hora em hora)
 ```
+
+**`memes-review`: os filtros acertam?** A prova em paper precisa de 30 trades fechados, o que leva semanas. A revisão aprende mais rápido. Para cada token checado a fundo (comprado, vetado pelo Claude, rejeitado pela segurança, pelo X ou pela cotação), ela pergunta: "e se ele tivesse comprado?". Busca os preços de 1 minuto das 24h seguintes na GeckoTerminal (grátis), aplica as mesmas regras de saída do agente e desconta 2% de custo. O resultado sai por motivo: quantos casos, média, quantos ganharam, pior e melhor.
+- Em **"Comprou"**, média positiva é bom.
+- Num **filtro que rejeitou**, média negativa quer dizer que ele evitou perdedores. Média positiva quer dizer que ele barrou tokens que teriam dado lucro: é candidato a afrouxar.
+- Cada decisão só tem resultado 24h depois. As janelas prontas ficam guardadas em `state\memes-review.json` e nunca são buscadas de novo (mudar as regras de saída refaz tudo).
+- Limites: a liquidez fica fixa na da entrada (os preços de 1 minuto não trazem liquidez) e a saída por post do X apagado não é simulada. No fim, o relatório compara a simulação com as compras reais em paper: as duas devem ficar próximas.
 
 - **Paper:** cada compra e venda simulada usa a cotação exata que a Jupiter executaria naquele instante, mais uma estimativa da taxa da rede.
 - **Real:** fica atrás de duas travas: `[memes] mode = "live"` e `MEMES_LIVE=I_UNDERSTAND`. A chave da carteira dedicada (`MEMES_PRIVATE_KEY`) só assina a parte dela em cada transação, nunca é registrada no log e nunca chega ao Claude. Passo a passo: `docs/PENDENCIAS.md`, C4.

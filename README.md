@@ -5,7 +5,7 @@ Robô que varre o Polymarket a cada 10 minutos, usa **Claude Code** (ou Codex) c
 Um segundo agente, de **memecoins na Solana** (os tokens do fomo.family), compra e vende sozinho a cada 3 minutos: descobre no DexScreener e nas listas da Jupiter, filtra mercado, segurança e o que o token mostra no X (sem custo), confere a cotação real na Jupiter, o Claude só veta, e vende por stops, realização de lucro ou se o post do X sumir. Também começa em paper e também paga para existir. Detalhes: [`docs/GUIA.md`](docs/GUIA.md#memecoins-solana) e [`docs/PENDENCIAS.md`](docs/PENDENCIAS.md) (D8 e C4).
 
 - **O que depende de você** (credenciais, decisões, como obter cada uma): [`docs/PENDENCIAS.md`](docs/PENDENCIAS.md)
-- **Painel:** duplo clique em `scripts\dashboard.cmd` → http://127.0.0.1:8765
+- **Painel:** http://127.0.0.1:8765 (sempre ligado depois do `scripts\install_task.ps1`; atalho "Painel dos robos" na área de trabalho)
 - Guia de uso: [`docs/GUIA.md`](docs/GUIA.md)
 - Design: [`docs/superpowers/specs/2026-10-12-polymarket-desk-design.md`](docs/superpowers/specs/2026-10-12-polymarket-desk-design.md)
 - VPS: [`deploy/VPS.md`](deploy/VPS.md)

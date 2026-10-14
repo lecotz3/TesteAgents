@@ -9,21 +9,25 @@ Two trading agents, adapted from the guide "How to Build a Self-Funding Grok Age
 - Both "pay to exist" (`[economy]`, cost per Claude call) and switch themselves off at a 40% drawdown.
 
 ## Working rules (from the user)
-- **Commit and push straight to `main`. No branches, no PRs.** Run the test suite (`.venv\Scripts\python -m pytest -q`, 484 tests as of 2026-10-13) before each commit.
+- **Commit and push straight to `main`. No branches, no PRs.** Run the test suite (`.venv\Scripts\python -m pytest -q`, 508 tests as of 2026-10-13, 9 skipped without the live extras) before each commit.
 - Work autonomously to the end. Stop only to ask a real question, when tokens run out, or when the PC is off. Anything the user must provide (credentials, keys, decisions) goes into `docs/PENDENCIAS.md` with step-by-step instructions instead of blocking.
 - Never handle private keys, seeds or tokens in chat; they live only in `.env` (never committed). Real money is always the user's decision. Real mode needs `mode="live"` in `config.toml` plus `DESK_LIVE` / `MEMES_LIVE=I_UNDERSTAND`.
 - Keep risk rules deterministic in code. Be honest that profit is not guaranteed.
 - TDD: write the failing test first. Commit messages are short and say what changed and why.
 
 ## Where the robots run (important with two computers)
-- The scheduled tasks (`scripts\install_task.ps1`) run on the **original Windows PC**, from its local folder:
+- Since 2026-10-13 21:47 the scheduled tasks (`scripts\install_task.ps1`) run on the **desktop DESKTOP-7FOLHUU** (user's decision; no battery, never sleeps on AC, S3 standby only), from `C:\Users\Leonardo\Projetos\TesteAgents`:
   - `PolymarketDesk`: every 10 min;
   - `PolymarketDeskMemes`: every 3 min;
   - `PolymarketDeskMemesExits`: every 1 min;
-  - `PolymarketDeskMonthly`: daily.
-- That PC needs `git pull` to pick up new code.
-- `state/` (SQLite ledgers, journals, logs) and `.env` are **not in git** on purpose. They are live data and secrets. The paper history the readiness proof depends on lives in that PC's `state/memes.db`.
-- **Run the agents on one computer only.** In paper, a second copy just builds a separate, confusing history. In live mode, two copies on the same wallet would trade with two separate ledgers. Do not run `install_task.ps1` on a second machine unless the robots are being moved: first uninstall them on the old PC (`scripts\uninstall_task.ps1`), then copy `state\` and `.env` by hand.
+  - `PolymarketDeskMemesReview`: hourly (`memes-review --max 60`);
+  - `PolymarketDeskMonthly`: daily;
+  - `PolymarketDeskDashboard`: the panel at http://127.0.0.1:8765, started at logon and re-checked every 5 min. Desktop shortcut "Painel dos robos".
+- The tasks run the working tree directly: a committed change is live at the next run. The panel loads its code once; restart it (`Stop-ScheduledTask` / `Start-ScheduledTask PolymarketDeskDashboard`) after changing `desk/dashboard*`.
+- The old **laptop** still had its tasks installed when the move happened. The user was asked (PENDENCIAS A1) to run `scripts\uninstall_task.ps1` there. Its `state\` (a few hours of paper, VEIL/SEALS) stays there; the desktop started a fresh paper history.
+- `state/` (SQLite ledgers, journals, logs) and `.env` are **not in git** on purpose. They are live data and secrets.
+- **Run the agents on one computer only.** In paper, a second copy just builds a separate, confusing history and spends the Claude quota twice. In live mode, two copies on the same wallet would trade with two separate ledgers. To move them again: uninstall on the old PC first, then copy `state\` and `.env` by hand.
+- **This network's DNS refuses Polymarket** (`gamma-api`/`clob.polymarket.com`: "DNS operation refused"). The desk cycle runs but scans nothing and says so on the panel. That is Brazil's block: never route around it (no VPN, no alternative DNS).
 
 ## Setting up another computer for development
 ```powershell
@@ -41,16 +45,12 @@ copy .env.example .env       # fill only what is needed; paper mode needs nothin
   - a lost `execute` answer is polled for 90s with the same signed transaction; uncertain buys are adopted from the wallet and uncertain sells settled at the attempt's price;
   - empty token accounts are closed hourly to get the rent back;
   - a low-SOL alert, a PC-asleep alert, and `memes-sell-all --yes`.
-- **Paper results:** first buys were VEIL and SEALS on 2026-10-13. VEIL sold half at +132%. Equity ≈ US$103 from US$100. The readiness meter needs 14 days, 30 closed trades and a positive result after costs.
-- **Pending from the user** (see `docs/PENDENCIAS.md`): Telegram (required for live checks), keeping the PC from sleeping, the paper proof, then a dedicated Solana wallet.
-- Deferred Polymarket minors (#9, #11, #12, #18, #20) are listed in a PR #1 comment. They are low priority while that desk is paper-only.
+- **Paper results:** the desktop's paper history starts 2026-10-13 21:50 (US$100). Its first two exits (VEIL, CRAWLER) were false "X link deleted" sells, fixed the same night (see below). The readiness meter needs 14 days, 30 closed trades and a positive result after costs.
+- **FxTwitter misfires:** it answers "User not found" (HTTP 404) for live accounts in about 1 call of 3. `FxTwitter._get` now believes "not found" only after 3 answers in a row, and the `x_link_dead` exit needs the link missing on every check for `X_GONE_MINUTES` (5) (`x_missing:<pos id>` meta). Discovery rejections still use a single (3-try) check.
+- **`memes-review` is done** (`desk/memes/review.py`, `python -m desk memes-review [--max N]`, hourly task, panel table "Os filtros acertam?"). It replays `rules.exit_decision` on GeckoTerminal 1-minute closes for `max_hold_hours` after each deep-checked decision (operational ones skipped; deduped by (mint, decision)), entry at the first close, liquidity fixed at entry, flat 2% cost, X exit not simulated. Only finished windows are fetched; results are cached in `state/memes-review.json` keyed by the exit rules (`rules_key`), so changing the rules recomputes. The panel reads only the cache (`max_fetch=0`). `PacedApi` in `sources.py` is the generic spaced/429-retrying client; `JupiterApi` subclasses it.
+- **Pending from the user** (see `docs/PENDENCIAS.md`): uninstall the tasks on the laptop (A1), Telegram (required for live checks), the paper proof, then a dedicated Solana wallet.
+- Deferred Polymarket minors (#9, #11, #12, #18, #20) are listed in a PR #1 comment. They are low priority while that desk is paper-only and DNS-blocked.
 
-## Next step (planned, not started): `memes-review`
-A CLI report, `desk/memes/review.py` + `python -m desk memes-review`. For every deep-checked decision in `memes.db` (bought, vetter_avoid, safety/X/quote rejections; skip operational ones like vet_error, buy_failed, wallet_*), it replays the real `rules.exit_decision` on the price history after the decision. It then reports per decision reason: count, average return, wins, worst and best. The point is to learn whether each filter and Claude's veto avoid losers, faster than the 30-trade paper proof.
-- **Price data:** GeckoTerminal's free API (verified working):
-  - pool lookup: `/api/v2/networks/solana/tokens/{mint}/pools`
-  - candles: `/api/v2/networks/solana/pools/{pool}/ohlcv/minute?aggregate=1&limit=1000&currency=usd&token={mint}&before_timestamp=...`, newest first, page backwards. `token=<mint>` also works when the mint is the quote side of the pool.
-- **Rate limit:** about 30 calls/min, so space calls about 2.1s apart and retry 429s. A generic paced client can be extracted from `JupiterApi` in `desk/memes/sources.py`.
-- **Replay:** use the 1-minute close (the real exit loop sees one price a minute). Liquidity stays at the entry level, because candles carry no liquidity data. Partial take-profit follows the real fractions. Subtract a flat ~2% round-trip cost. A window still under 24h is reported as open.
-- **Cache:** save complete 24h windows in `state/memes-review.json`. Dedupe by (mint, decision), keeping the first.
-- **Sanity check:** compare the simulated "bought" results with the real paper positions.
+## Possible next steps
+- Once `memes-review` has a few days of finished windows, read it with the user: a filter whose rejections average positive is a candidate to loosen; a negative "Comprou" average means the agent has no edge.
+- The Polymarket desk keeps paying rent while DNS-blocked and will hit its 40% line in ~33 days without trading. The user can pause it by disabling `PolymarketDesk`; changing the economy rules for blocked days is the user's call.
