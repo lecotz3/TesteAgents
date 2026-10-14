@@ -228,17 +228,17 @@ class LiveMemeExecutor:
         """Every token bought opens an account that holds ~0.0015 SOL of rent. Once a sell empties it, closing it
         sends that SOL back to the wallet. Built here, not by Jupiter: only CloseAccount, only empty accounts, only
         to the wallet itself. USDC and wrapped SOL accounts are kept."""
-        from solders.hash import Hash
+        empty = [a for a in self._rpc.empty_token_accounts(self.owner)
+                 if a[1] in TOKEN_PROGRAMS and a[2] not in (USDC_MINT, SOL_MINT)][:limit]  # never sign for another program
+        if not empty:
+            return 0
+        from solders.hash import Hash  # the live extra; only needed once there is something to sign
         from solders.instruction import AccountMeta, Instruction
         from solders.message import MessageV0
         from solders.pubkey import Pubkey
         from solders.signature import Signature
         from solders.transaction import VersionedTransaction
 
-        empty = [a for a in self._rpc.empty_token_accounts(self.owner)
-                 if a[1] in TOKEN_PROGRAMS and a[2] not in (USDC_MINT, SOL_MINT)][:limit]  # never sign for another program
-        if not empty:
-            return 0
         owner = Pubkey.from_string(self.owner)
         close_account = bytes([9])  # SPL Token / Token-2022 instruction CloseAccount
         ixs = [Instruction(Pubkey.from_string(program), close_account, [
