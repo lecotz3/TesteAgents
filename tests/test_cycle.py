@@ -262,6 +262,19 @@ def test_scan_outage_still_processes_exits(env):
     assert any("varredura falhou" in e for e in report.errors)
 
 
+def test_a_dns_block_is_named_on_the_dashboard(env):
+    tmp_path, store = env
+
+    class DnsBlocked(FakeMarkets):
+        def active_markets(self, limit_total):
+            raise httpx.ConnectError("[Errno 11001] getaddrinfo failed")
+
+    deps = make_deps(tmp_path, store, [], {}, FakeAnalyst())
+    deps.markets = DnsBlocked([])
+    [error] = run_cycle(deps).errors
+    assert "DNS" in error and "não contorne" in error
+
+
 def test_max_open_positions_stops_scanning(env):
     tmp_path, store = env
     for i in range(5):

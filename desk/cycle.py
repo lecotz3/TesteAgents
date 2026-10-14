@@ -335,7 +335,10 @@ class _Cycle:
         try:
             markets = self.d.markets.active_markets(self.s.scan.max_markets_scanned)
         except FETCH_ERRORS as exc:
-            self.error(f"varredura falhou: {type(exc).__name__}")
+            if "getaddrinfo" in str(exc):  # the network's DNS refuses Polymarket's addresses
+                self.error("varredura falhou: o DNS desta rede não resolve o Polymarket (bloqueio no Brasil; não contorne)")
+            else:
+                self.error(f"varredura falhou: {type(exc).__name__}")
             return
         self.report.scanned = len(markets)
         excluded = {p.market_id for p in open_positions} | self.store.blocked_ids(self.now)
