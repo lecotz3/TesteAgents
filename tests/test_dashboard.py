@@ -171,7 +171,7 @@ def test_server_listens_only_on_localhost(server):
 def test_server_serves_page_and_state(server):
     page = httpx.get(base(server) + "/")
     assert page.status_code == 200 and "text/html" in page.headers["content-type"]
-    assert "Polymarket Desk" in page.text
+    assert "Painel dos robôs" in page.text and "Memecoins (Solana)" in page.text
     state = httpx.get(base(server) + "/api/state")
     assert state.status_code == 200 and state.json()["economics"]["equity"] == pytest.approx(99.33)
     assert httpx.get(base(server) + "/nada").status_code == 404

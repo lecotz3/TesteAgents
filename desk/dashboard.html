@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Polymarket Desk</title>
+<title>Painel dos robôs</title>
 <style>
   :root {
     --bg: #f6f7f9; --panel: #ffffff; --text: #17202a; --muted: #5f6b7a; --line: #e3e7ec;
@@ -64,23 +64,22 @@
   svg text { fill: var(--muted); font-size: 11px; }
   .empty { color: var(--muted); padding: 8px 0; }
   .group-title { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px;
-                 padding-top: 16px; border-top: 2px solid var(--line); }
+                 padding-top: 16px; border-top: 2px solid var(--line); scroll-margin-top: 72px; }
   .group-title.first { margin-top: 0; padding-top: 0; border-top: 0; }
   [hidden] { display: none !important; }
 </style>
 </head>
 <body>
 <header>
-  <h1>Polymarket Desk</h1>
-  <span id="b-mode" class="badge">…</span>
-  <span id="b-life" class="badge">…</span>
-  <span id="b-sched" class="badge">…</span>
+  <h1>Painel dos robôs</h1>
+  <a href="#memes-title">Memecoins</a>
+  <a href="#poly-title">Polymarket</a>
   <span class="spacer"></span>
   <span id="updated" class="muted">carregando…</span>
   <button id="refresh" type="button">Atualizar</button>
 </header>
 <main>
-  <div class="group-title first">
+  <div class="group-title first" id="memes-title">
     <h1>Memecoins (Solana)</h1>
     <span id="m-mode" class="badge">…</span>
     <span id="m-life" class="badge">…</span>
@@ -88,7 +87,7 @@
   </div>
   <div id="memes-empty" class="alert" hidden>
     O agente de memecoins ainda não rodou. Para um ciclo agora: <b>python -m desk memes</b>.
-    Para rodar sozinho a cada 3 minutos: scripts\install_task.ps1 (instala as três tarefas).
+    Para rodar sozinho a cada 3 minutos: scripts\install_task.ps1 (instala as tarefas e o painel).
   </div>
   <div id="memes" hidden>
     <div id="m-alerts" class="alerts"></div>
@@ -127,8 +126,11 @@
     </section>
   </div>
 
-  <div class="group-title">
+  <div class="group-title" id="poly-title">
     <h1>Polymarket</h1>
+    <span id="b-mode" class="badge">…</span>
+    <span id="b-life" class="badge">…</span>
+    <span id="b-sched" class="badge">…</span>
     <span class="muted">só paper: o Brasil está bloqueado para ordens reais</span>
   </div>
   <div id="alerts" class="alerts"></div>
