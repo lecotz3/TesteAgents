@@ -45,13 +45,13 @@ As tarefas rodam só com sua sessão do Windows aberta (o `claude` usa seu login
 
 ## Painel
 
-O painel fica em http://127.0.0.1:8765. O `install_task.ps1` o deixa sempre ligado: ele sobe sozinho quando você entra no Windows, sem janela, e é conferido a cada 5 minutos. Para abrir, use o atalho **"Painel dos robos"** na área de trabalho, o `scripts\dashboard.cmd` ou o endereço no navegador. Ele se atualiza a cada 30s e mostra:
-- equity e linha de desligamento;
-- ganho operando contra custo de existir;
-- fôlego em dias;
-- o que o Claude concluiu sobre cada mercado e por que o robô entrou ou pulou;
-- posições, trades, ciclos, diário e log;
-- nas memecoins, a tabela **"Os filtros acertam?"** (ver `memes-review` abaixo).
+O painel fica em http://127.0.0.1:8765. O `install_task.ps1` o deixa sempre ligado: ele sobe sozinho quando você entra no Windows, sem janela, e é conferido a cada 5 minutos. Para abrir, use o atalho **"Painel dos robos"** na área de trabalho, o `scripts\dashboard.cmd` ou o endereço no navegador. Ele se atualiza a cada 30s (desligue em "ao vivo") e tem quatro abas:
+- **Resumo:** um cartão por robô (saldo, variação, mini-gráfico, posições, último ciclo, se está pronto para dinheiro real), o top do Em alta e as últimas compras e vendas. Clique num cartão para abrir o robô.
+- **Memecoins:** saldo, gráfico (passe o mouse para ver cada ponto, ou use as setas), posições e, numa caixa com sub-abas, os tokens checados, compras e vendas, "Os filtros acertam?", o último ciclo e o diário.
+- **Em alta:** as maiores movimentações da hora, com filtros (subindo, caindo, passam no filtro do robô), busca e os picos de 24h.
+- **Polymarket:** saldo, fôlego, gráfico e, em sub-abas, decisões, posições, trades, ciclos, diário e log.
+
+Em qualquer tabela: clique no título de uma coluna para ordenar e numa linha para ver os detalhes.
 
 É somente leitura e só abre neste computador.
 

@@ -6,184 +6,245 @@
 <title>Painel dos robôs</title>
 <style>
   :root {
-    --bg: #f6f7f9; --panel: #ffffff; --text: #17202a; --muted: #5f6b7a; --line: #e3e7ec;
+    color-scheme: light;
+    --bg: #f6f7f9; --panel: #ffffff; --text: #17202a; --muted: #5f6b7a; --line: #e3e7ec; --hover: #f1f4f8;
     --good: #12805c; --good-bg: #e3f5ee; --bad: #c0392b; --bad-bg: #fbe9e7; --warn: #a15c00; --warn-bg: #fff3dc;
-    --accent: #2457d6; --accent-bg: #e8eefc; --chart: #2457d6;
+    --accent: #2457d6; --accent-bg: #e8eefc; --series: #2a78d6; --critical: #d03b3b; --grid: #e1e0d9;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #0f1419; --panel: #171e26; --text: #e6edf3; --muted: #93a1b0; --line: #26313c;
+      color-scheme: dark;
+      --bg: #0f1419; --panel: #171e26; --text: #e6edf3; --muted: #93a1b0; --line: #26313c; --hover: #1d2631;
       --good: #3fcf8e; --good-bg: #12342a; --bad: #ff7b72; --bad-bg: #3d1d1b; --warn: #f2b84b; --warn-bg: #3a2c12;
-      --accent: #79a6ff; --accent-bg: #1b2a44; --chart: #79a6ff;
+      --accent: #79a6ff; --accent-bg: #1b2a44; --series: #3987e5; --critical: #e66767; --grid: #2c2c2a;
     }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text);
-         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 16px 20px;
-           background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; }
-  h1 { font-size: 18px; margin: 0 8px 0 0; }
-  h2 { font-size: 15px; margin: 0 0 10px; }
-  main { max-width: 1280px; margin: 0 auto; padding: 16px; display: grid; gap: 16px; }
-  .badge { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600;
-           background: var(--accent-bg); color: var(--accent); }
-  .badge.good { background: var(--good-bg); color: var(--good); }
-  .badge.bad { background: var(--bad-bg); color: var(--bad); }
-  .badge.warn { background: var(--warn-bg); color: var(--warn); }
-  .spacer { flex: 1; }
-  .muted { color: var(--muted); }
-  button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--text);
-           border-radius: 8px; padding: 5px 12px; cursor: pointer; }
-  .alerts { display: grid; gap: 8px; }
-  .alert { padding: 10px 14px; border-radius: 10px; background: var(--warn-bg); color: var(--warn); }
-  .alert.bad { background: var(--bad-bg); color: var(--bad); }
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
-  .card, section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
-  .card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
-  .card .value { font-size: 24px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
-  .card .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
-  .pos { color: var(--good); } .neg { color: var(--bad); }
-  .bar { height: 6px; background: var(--line); border-radius: 3px; margin-top: 8px; overflow: hidden; }
-  .bar > div { height: 100%; background: var(--accent); }
-  .bar.danger > div { background: var(--bad); }
-  .grid2 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
-  @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
-  .table-wrap { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { color: var(--muted); font-weight: 600; font-size: 12px; white-space: nowrap; }
-  td.num, th.num { text-align: right; white-space: nowrap; }
-  td.q { min-width: 220px; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 8px; margin-bottom: 10px; }
-  .stat .n { font-size: 20px; font-weight: 700; } .stat .t { color: var(--muted); font-size: 12px; }
-  pre { margin: 0; max-height: 360px; overflow: auto; background: var(--bg); padding: 10px; border-radius: 8px;
-        font: 12px/1.4 ui-monospace, Consolas, monospace; white-space: pre-wrap; }
-  details summary { cursor: pointer; font-weight: 600; }
-  svg text { fill: var(--muted); font-size: 11px; }
-  .empty { color: var(--muted); padding: 8px 0; }
-  .group-title { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px;
-                 padding-top: 16px; border-top: 2px solid var(--line); scroll-margin-top: 72px; }
-  .group-title.first { margin-top: 0; padding-top: 0; border-top: 0; }
-  .anchor { scroll-margin-top: 72px; }
+  button { font: inherit; color: inherit; }
   [hidden] { display: none !important; }
+  .muted { color: var(--muted); }
+  .pos { color: var(--good); } .neg { color: var(--bad); }
+
+  /* header and tabs */
+  header { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line);
+           display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; padding: 0 20px; }
+  .brand { font-weight: 700; font-size: 16px; padding: 14px 0; }
+  .tabs { display: flex; gap: 2px; overflow-x: auto; }
+  .tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 14px 12px 12px; cursor: pointer;
+                 color: var(--muted); font-weight: 600; white-space: nowrap; }
+  .tabs button:hover { color: var(--text); }
+  .tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+  .spacer { flex: 1; }
+  .toolbar { display: flex; align-items: center; gap: 12px; font-size: 13px; padding: 8px 0; }
+  .switch { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  .btn { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 5px 12px; cursor: pointer; }
+  .btn:hover { background: var(--hover); }
+
+  main { max-width: 1240px; margin: 0 auto; padding: 20px 16px 48px; display: grid; gap: 16px; transition: opacity .2s; }
+  main.stale { opacity: .6; }
+  .panel-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 15px; margin: 0; }
+  .lead { margin: 0; color: var(--muted); max-width: 820px; }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+  .card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 12px; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+          background: var(--accent-bg); color: var(--accent); white-space: nowrap; }
+  .pill.good { background: var(--good-bg); color: var(--good); }
+  .pill.bad { background: var(--bad-bg); color: var(--bad); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+  .alerts { display: grid; gap: 8px; }
+  .alert { display: flex; gap: 10px; align-items: baseline; padding: 10px 14px; border-radius: 10px; background: var(--warn-bg); color: var(--warn); }
+  .alert.bad { background: var(--bad-bg); color: var(--bad); }
+  .alert b { white-space: nowrap; }
+
+  /* robot cards (Resumo) */
+  .robot { cursor: pointer; transition: border-color .15s; display: grid; gap: 12px; }
+  .robot:hover, .robot:focus-visible { border-color: var(--accent); outline: none; }
+  .robot .top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .robot .name { font-weight: 700; font-size: 16px; }
+  .robot .go { margin-left: auto; color: var(--muted); font-size: 13px; }
+  .hero { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+  .hero .value { font-size: 40px; font-weight: 700; line-height: 1; }
+  .hero .delta { font-size: 13px; margin-top: 6px; }
+  .hero svg { flex: 1; min-width: 140px; height: 48px; }
+  .facts { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font-size: 13px; }
+  .facts b { color: var(--text); font-weight: 600; }
+  .note { font-size: 13px; padding: 8px 12px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); }
+
+  /* stat tiles */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .tile .label { color: var(--muted); font-size: 13px; }
+  .tile .value { font-size: 26px; font-weight: 700; margin-top: 2px; }
+  .tile .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .meter { height: 6px; background: var(--accent-bg); border-radius: 3px; margin-top: 10px; overflow: hidden; }
+  .meter > div { height: 100%; background: var(--accent); border-radius: 3px; }
+  .meter.danger > div { background: var(--critical); }
+
+  /* controls */
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .seg { display: inline-flex; flex-wrap: wrap; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 3px; gap: 2px; }
+  .seg button { border: 0; background: none; padding: 5px 12px; border-radius: 7px; cursor: pointer; color: var(--muted); font-weight: 600; font-size: 13px; }
+  .seg button:hover { color: var(--text); }
+  .seg button[aria-pressed="true"] { background: var(--panel); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 4px 12px; cursor: pointer; font-size: 13px; }
+  .chip[aria-pressed="true"] { background: var(--accent-bg); color: var(--accent); border-color: transparent; font-weight: 600; }
+  .chip .n { color: var(--muted); font-weight: 400; margin-left: 4px; }
+  input[type="search"] { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+                         padding: 6px 10px; min-width: 200px; }
+  input[type="search"]:focus { outline: 2px solid var(--accent-bg); border-color: var(--accent); }
+  .grow { flex: 1; }
+
+  /* tables */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+  th button { background: none; border: 0; padding: 0; cursor: pointer; color: inherit; font: inherit; }
+  th button:hover { color: var(--text); }
+  th .arrow { display: inline-block; width: 10px; margin-left: 2px; }
+  tr.row { cursor: pointer; }
+  tr.row:hover td, tr.row:focus-visible td { background: var(--hover); }
+  tr.row:focus-visible { outline: none; }
+  tr.row td:first-child::before { content: "▸"; display: inline-block; width: 14px; color: var(--muted); font-size: 11px; }
+  tr.row.open td:first-child::before { content: "▾"; }
+  tr.row.open td { border-bottom-color: transparent; }
+  tr.detail td { background: var(--bg); padding: 12px 16px 14px 34px; }
+  .kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px 20px; }
+  .kv div span { display: block; color: var(--muted); font-size: 12px; }
+  .detail-text { margin-top: 10px; white-space: pre-wrap; }
+  .empty { color: var(--muted); padding: 10px 0; }
+  .wide { min-width: 220px; }
+
+  /* chart */
+  .chart { position: relative; }
+  .chart svg { display: block; width: 100%; height: auto; touch-action: pan-y; }
+  .chart svg:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+  .chart text { fill: var(--muted); font-size: 12px; }
+  .tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+         padding: 6px 10px; box-shadow: 0 4px 14px rgba(0,0,0,.14); font-size: 12px; white-space: nowrap; transform: translate(-50%, -110%); }
+  .tip strong { display: block; font-size: 14px; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-top: 10px; }
+  pre { margin: 0; max-height: 420px; overflow: auto; background: var(--bg); padding: 12px; border-radius: 8px;
+        font: 12px/1.45 ui-monospace, Consolas, monospace; white-space: pre-wrap; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin: 10px 0 14px; }
+  .stats .n { font-size: 22px; font-weight: 700; } .stats .t { color: var(--muted); font-size: 12px; }
+  .compact-list { display: grid; }
+  .compact-list > div { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .compact-list > div:last-child { border-bottom: 0; }
+  .compact-list .sym { font-weight: 600; min-width: 90px; }
+  @media (max-width: 640px) { header { padding: 0 12px; } .hero .value { font-size: 32px; } input[type="search"] { min-width: 0; width: 100%; } }
 </style>
 </head>
 <body>
 <header>
-  <h1>Painel dos robôs</h1>
-  <a href="#memes-title">Memecoins</a>
-  <a href="#movers-title">Em alta</a>
-  <a href="#poly-title">Polymarket</a>
+  <div class="brand">Painel dos robôs</div>
+  <nav class="tabs" role="tablist" aria-label="Seções">
+    <button role="tab" data-tab="resumo" aria-controls="tab-resumo">Resumo</button>
+    <button role="tab" data-tab="memes" aria-controls="tab-memes">Memecoins</button>
+    <button role="tab" data-tab="emalta" aria-controls="tab-emalta">Em alta</button>
+    <button role="tab" data-tab="poly" aria-controls="tab-poly">Polymarket</button>
+  </nav>
   <span class="spacer"></span>
-  <span id="updated" class="muted">carregando…</span>
-  <button id="refresh" type="button">Atualizar</button>
+  <div class="toolbar">
+    <label class="switch" title="Atualiza sozinho a cada 30 segundos"><input type="checkbox" id="live" checked> ao vivo</label>
+    <span id="updated" class="muted">carregando…</span>
+    <button class="btn" id="refresh" type="button">Atualizar</button>
+  </div>
 </header>
-<main>
-  <div class="group-title first" id="memes-title">
-    <h1>Memecoins (Solana)</h1>
-    <span id="m-mode" class="badge">…</span>
-    <span id="m-life" class="badge">…</span>
-    <span id="m-sched" class="badge">…</span>
-  </div>
-  <div id="memes-empty" class="alert" hidden>
-    O agente de memecoins ainda não rodou. Para um ciclo agora: <b>python -m desk memes</b>.
-    Para rodar sozinho a cada 3 minutos: scripts\install_task.ps1 (instala as tarefas e o painel).
-  </div>
-  <div id="memes" hidden>
-    <div id="m-alerts" class="alerts"></div>
-    <div id="m-cards" class="cards"></div>
-    <div class="grid2" style="margin-top:16px">
-      <section>
-        <h2>Vida do agente de memecoins (equity, 30 dias)</h2>
-        <div id="m-chart"></div>
-      </section>
-      <section>
-        <h2>Último ciclo</h2>
-        <div id="m-last"></div>
-      </section>
+
+<main id="main">
+  <!-- RESUMO -->
+  <section id="tab-resumo" role="tabpanel" class="tabpanel" style="display:grid;gap:16px">
+    <div id="r-alerts" class="alerts"></div>
+    <div class="grid2">
+      <article class="card robot" id="r-memes" tabindex="0" data-goto="memes"></article>
+      <article class="card robot" id="r-poly" tabindex="0" data-goto="poly"></article>
     </div>
-    <section style="margin-top:16px">
-      <h2>Posições em memecoins</h2>
-      <div class="table-wrap"><table id="m-positions"></table></div>
-    </section>
-    <section style="margin-top:16px" id="movers-title" class="anchor">
-      <h2>Em alta agora: as maiores movimentações de memecoins na última hora <span id="m-movers-updated" class="muted" style="font-weight:400"></span></h2>
-      <div class="muted">As mesmas que o fomo mostra em "Em alta", lidas das listas públicas da Jupiter a cada ciclo (tokens de até 7 dias).
-        Clique no token para abrir no fomo. A última coluna diz se ele passaria no filtro de mercado do robô; só acompanhar, nada aqui compra.</div>
-      <div class="table-wrap"><table id="m-movers"></table></div>
-    </section>
-    <section style="margin-top:16px">
-      <h2>Os maiores das últimas 24h: o pico de cada um e onde está agora</h2>
-      <div class="table-wrap"><table id="m-peaks"></table></div>
-    </section>
-    <section style="margin-top:16px">
-      <h2>Tokens que ele checou a fundo</h2>
-      <div class="table-wrap"><table id="m-decisions"></table></div>
-    </section>
-    <section style="margin-top:16px">
-      <h2>Os filtros acertam? E se ele tivesse comprado cada token checado</h2>
-      <div class="muted">Simula as regras de saída reais nas 24h depois de cada decisão (preços de 1 min da GeckoTerminal, menos 2% de custo).
-        Em "Comprou", média positiva é bom. Num filtro que rejeitou, média negativa quer dizer que ele evitou perdedores; positiva, que barrou tokens que dariam lucro.
-        Atualiza sozinho de hora em hora; para rodar agora: <b>python -m desk memes-review</b>.</div>
-      <div class="table-wrap"><table id="m-review"></table></div>
-    </section>
-    <section style="margin-top:16px">
-      <h2>Compras e vendas</h2>
-      <div class="table-wrap"><table id="m-trades"></table></div>
-    </section>
-    <section style="margin-top:16px">
-      <details><summary>Diário das memecoins (memes.txt)</summary><pre id="m-journal"></pre></details>
-    </section>
-  </div>
-
-  <div class="group-title" id="poly-title">
-    <h1>Polymarket</h1>
-    <span id="b-mode" class="badge">…</span>
-    <span id="b-life" class="badge">…</span>
-    <span id="b-sched" class="badge">…</span>
-    <span class="muted">só paper: o Brasil está bloqueado para ordens reais</span>
-  </div>
-  <div id="alerts" class="alerts"></div>
-  <div id="cards" class="cards"></div>
-  <div class="grid2">
-    <section>
-      <h2>Vida do robô (equity, 30 dias)</h2>
-      <div id="chart"></div>
-      <div class="muted" style="font-size:12px;margin-top:6px">
-        Linha tracejada vermelha: abaixo dela o robô é <b>desligado</b>. Cinza: banca inicial.
+    <div class="grid2">
+      <div class="card">
+        <div class="card-head"><h2>Em alta agora</h2><span class="spacer"></span><a href="#emalta">ver todas →</a></div>
+        <div id="r-movers"></div>
       </div>
-    </section>
-    <section>
-      <h2>Último ciclo</h2>
-      <div id="last-cycle"></div>
-    </section>
-  </div>
-  <section>
-    <h2>O que o robô decidiu</h2>
-    <div class="table-wrap"><table id="decisions"></table></div>
-  </section>
-  <section>
-    <h2>Posições abertas</h2>
-    <div class="table-wrap"><table id="positions"></table></div>
-  </section>
-  <section>
-    <h2>Trades</h2>
-    <div class="table-wrap"><table id="trades"></table></div>
-  </section>
-  <section>
-    <h2>Ciclos recentes</h2>
-    <div class="table-wrap"><table id="cycles"></table></div>
-  </section>
-  <section>
-    <details><summary>Diário (trades.txt)</summary><pre id="journal"></pre></details>
+      <div class="card">
+        <div class="card-head"><h2>Últimas compras e vendas (memecoins)</h2><span class="spacer"></span><a href="#memes">ver tudo →</a></div>
+        <div id="r-trades"></div>
+      </div>
+    </div>
   </section>
 
-  <section>
-    <details><summary>Log técnico (desk.log)</summary><pre id="log"></pre></details>
+  <!-- MEMECOINS -->
+  <section id="tab-memes" role="tabpanel" class="tabpanel" hidden style="gap:16px">
+    <div class="panel-head"><h1>Memecoins (Solana)</h1><span id="m-pills" class="panel-head"></span></div>
+    <div id="m-empty" class="card empty" hidden>O agente de memecoins ainda não rodou. Para um ciclo agora: <b>python -m desk memes</b>.</div>
+    <div id="m-body" style="display:grid;gap:16px">
+      <div id="m-alerts" class="alerts"></div>
+      <div id="m-tiles" class="tiles"></div>
+      <div id="m-facts" class="facts"></div>
+      <div class="card">
+        <div class="card-head"><h2>Saldo do agente</h2><span class="muted" id="m-chart-sub"></span></div>
+        <div id="m-chart" class="chart"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Posições abertas</h2></div>
+        <div id="m-positions"></div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <div class="seg" data-seg="memes"></div>
+          <span class="grow"></span>
+          <input type="search" data-search="memes" placeholder="Buscar token" aria-label="Buscar token">
+        </div>
+        <div id="m-hint" class="muted" style="margin:-4px 0 10px;font-size:13px"></div>
+        <div id="m-detail"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- EM ALTA -->
+  <section id="tab-emalta" role="tabpanel" class="tabpanel" hidden style="gap:16px">
+    <div class="panel-head"><h1>Em alta</h1><span id="mv-updated" class="muted"></span></div>
+    <p class="lead">As memecoins (até 7 dias) que mais se moveram na última hora, as mesmas do "Em alta" do fomo. Clique no nome para abrir no fomo e na linha para ver os detalhes. Só acompanhamento: nada aqui compra.</p>
+    <div class="controls">
+      <div class="seg" data-seg="movers"></div>
+      <div class="chips" id="mv-chips"></div>
+      <span class="grow"></span>
+      <input type="search" data-search="movers" placeholder="Buscar token" aria-label="Buscar token">
+    </div>
+    <div class="card"><div id="mv-table"></div></div>
+  </section>
+
+  <!-- POLYMARKET -->
+  <section id="tab-poly" role="tabpanel" class="tabpanel" hidden style="gap:16px">
+    <div class="panel-head"><h1>Polymarket</h1><span id="p-pills" class="panel-head"></span></div>
+    <div id="p-alerts" class="alerts"></div>
+    <div id="p-tiles" class="tiles"></div>
+    <div id="p-facts" class="facts"></div>
+    <div class="card">
+      <div class="card-head"><h2>Saldo do robô</h2><span class="muted" id="p-chart-sub"></span></div>
+      <div id="p-chart" class="chart"></div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <div class="seg" data-seg="poly"></div>
+        <span class="grow"></span>
+        <input type="search" data-search="poly" placeholder="Buscar mercado" aria-label="Buscar mercado">
+      </div>
+      <div id="p-detail"></div>
+    </div>
   </section>
 </main>
+
 <script>
 "use strict";
 const REFRESH_MS = 30000;
@@ -198,7 +259,6 @@ const LABELS = {
   daily_analysis_cap: ["Teto diário de análises", "warn"], daily_budget: ["Sem orçamento hoje", "warn"],
   fair_value_changed: ["Valor justo mudou", ""], mispricing_closed: ["Distorção fechou", "good"],
   resolving_soon: ["Perto da resolução", ""], settled: ["Resolvido", ""],
-  // memecoins
   bought: ["Comprou", "good"], alerted: ["Alerta enviado", "good"], vetter_avoid: ["Claude vetou", "warn"],
   vet_error: ["Claude falhou", "warn"], buy_uncertain: ["Compra incerta", "bad"], price_mismatch: ["Preço destoa", ""],
   round_trip_cost: ["Ida e volta cara", ""], cannot_sell: ["Sem rota de venda", "bad"], price_impact: ["Impacto alto", ""],
@@ -216,328 +276,589 @@ const LABELS = {
   max_hold: ["Tempo máximo", ""], liquidity_drained: ["Liquidez sumindo", "bad"], missing_in_wallet: ["Sumiu da carteira", "bad"],
   no_x_link: ["Sem link do X", ""], x_link_dead: ["Post/perfil do X apagado", "bad"], x_weak_narrative: ["Narrativa fraca no X", ""],
   x_no_community: ["Perfil do X sem seguidores", ""], x_unavailable: ["X fora do ar", "warn"],
-  low_organic_score: ["Muito bot (Jupiter)", ""], daily_loss_pause: ["Pausa: dia ruim", "warn"],
-  price_moved: ["Preço correu", ""],
+  low_organic_score: ["Muito bot (Jupiter)", ""], daily_loss_pause: ["Pausa: dia ruim", "warn"], price_moved: ["Preço correu", ""],
+  manual: ["Venda geral", "warn"],
 };
 const ACTIONS = { BUY: "Compra", SELL: "Venda", SETTLE: "Liquidação" };
-const fomoLink = (mint, text) => el("a", { href: "https://fomo.family/tokens/solana/" + encodeURIComponent(mint),
-  target: "_blank", rel: "noopener noreferrer", text });
 const CONFIDENCE = { low: "baixa", medium: "média", high: "alta" };
-const usd = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "USD" });
-const fmtUsd = (x) => (x === null || x === undefined ? "—" : usd.format(x));
-const compactUsd = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 });
-const fmtCompact = (x) => (x === null || x === undefined ? "—" : compactUsd.format(x));
-const fmtSigned = (x) => (x > 0 ? "+" : "") + usd.format(x);
-const fmtPct = (x, d = 0) => (x === null || x === undefined ? "—" : (x * 100).toFixed(d).replace(".", ",") + "%");
-const fmtNum = (x, d = 2) => (x === null || x === undefined ? "—" : Number(x).toFixed(d).replace(".", ","));
-const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—");
 
+// --- formatting ---------------------------------------------------------------------------------------------------
+const usd = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "USD" });
+const compactUsd = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 });
+const int = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
+const isNum = (x) => typeof x === "number" && isFinite(x);
+const fmtUsd = (x) => (isNum(x) ? usd.format(x) : "—");
+const fmtCompact = (x) => (isNum(x) ? compactUsd.format(x) : "—");
+const fmtSigned = (x) => (isNum(x) ? (x > 0 ? "+" : "") + usd.format(x) : "—");
+const fmtPct = (x, d = 0) => (isNum(x) ? (x * 100).toFixed(d).replace(".", ",") + "%" : "—");
+const fmtNum = (x, d = 2) => (isNum(x) ? Number(x).toFixed(d).replace(".", ",") : "—");
+const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—");
+const fmtClock = (iso) => (iso ? new Date(iso).toLocaleTimeString("pt-BR", { timeStyle: "short" }) : "?");
+const fmtAge = (h) => (!isNum(h) ? "—" : h < 1 ? `${Math.round(h * 60)} min` : h < 48 ? `${Math.round(h)} h` : `${Math.round(h / 24)} d`);
+const ago = (min) => (!isNum(min) ? "—" : min < 1 ? "agora" : min < 90 ? `há ${Math.round(min)} min` : `há ${Math.round(min / 60)} h`);
+const signClass = (x) => (x > 0.004 ? "pos" : x < -0.004 ? "neg" : "");
+
+// --- tiny DOM helpers ---------------------------------------------------------------------------------------------
 function el(tag, props = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(props)) {
+    if (v === undefined || v === null) continue;
     if (k === "class") node.className = v;
     else if (k === "text") node.textContent = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
     else node.setAttribute(k, v);
   }
   for (const child of [].concat(children)) {
-    if (child === null || child === undefined) continue;
+    if (child === null || child === undefined || child === false) continue;
     node.append(child instanceof Node ? child : document.createTextNode(String(child)));
   }
   return node;
 }
-const badge = (text, kind = "") => el("span", { class: "badge " + kind, text });
-const label = (code) => { const [t, k] = LABELS[code] || [code, ""]; return badge(t, k); };
-const signClass = (x) => (x > 0.004 ? "pos" : x < -0.004 ? "neg" : "");
-const marketLink = (question, slug) => slug
-  ? el("a", { href: "https://polymarket.com/market/" + encodeURIComponent(slug), target: "_blank", rel: "noopener noreferrer", text: question })
-  : el("span", { text: question });
-
-function table(target, headers, rows, empty) {
-  const t = document.getElementById(target);
-  t.replaceChildren();
-  if (!rows.length) { t.append(el("caption", { class: "empty", text: empty })); return; }
-  t.append(el("thead", {}, el("tr", {}, headers.map(([h, cls]) => el("th", { class: cls || "", text: h })))));
-  t.append(el("tbody", {}, rows.map((cells) => el("tr", {}, cells.map(([v, cls]) => el("td", { class: cls || "" }, v))))));
+const NS = "http://www.w3.org/2000/svg";
+function svg(tag, attrs = {}) {
+  const node = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  return node;
 }
+const fill = (id, ...nodes) => document.getElementById(id).replaceChildren(...nodes.filter(Boolean));
+const pill = (text, kind = "", dot = false) => el("span", { class: "pill " + kind }, [dot ? el("span", { class: "dot" }) : null, text]);
+const label = (code) => { const [t, k] = LABELS[code] || [code || "—", ""]; return pill(t, k); };
+const chg = (x) => el("span", { class: signClass(x / 100), text: isNum(x) ? (x > 0 ? "+" : "") + int.format(x) + "%" : "—" });
+const signed = (x) => el("span", { class: signClass(x), text: fmtSigned(x) });
+const link = (href, text) => el("a", { href, target: "_blank", rel: "noopener noreferrer", text, onclick: (e) => e.stopPropagation() });
+const fomoLink = (mint, text) => link("https://fomo.family/tokens/solana/" + encodeURIComponent(mint), text);
+const marketLink = (question, slug) => (slug ? link("https://polymarket.com/market/" + encodeURIComponent(slug), question) : el("span", { text: question }));
+const kv = (pairs) => el("div", { class: "kv" }, pairs.filter(Boolean).map(([k, v]) => el("div", {}, [el("span", { text: k }), v])));
+const empty = (text) => el("div", { class: "empty", text });
 
-function card(title, value, sub, valueClass = "", barPct = null, danger = false) {
-  const c = el("div", { class: "card" }, [
-    el("div", { class: "label", text: title }),
-    el("div", { class: "value " + valueClass, text: value }),
-    sub ? el("div", { class: "sub", text: sub }) : null,
-  ]);
-  if (barPct !== null) {
-    const inner = el("div"); inner.style.width = Math.max(0, Math.min(100, barPct)) + "%";
-    c.append(el("div", { class: "bar" + (danger ? " danger" : "") }, inner));
+// --- remembered UI state (per viewer, optional) ----------------------------------------------------------------------
+const saved = (() => { try { return JSON.parse(localStorage.getItem("painel") || "{}"); } catch { return {}; } })();
+const ui = {
+  tab: "resumo", live: saved.live !== false,
+  seg: Object.assign({ memes: "decisions", movers: "now", poly: "decisions" }, saved.seg || {}),
+  moverFilter: saved.moverFilter || "all",
+  search: {}, sort: {}, open: {},
+};
+function remember() {
+  try { localStorage.setItem("painel", JSON.stringify({ live: ui.live, seg: ui.seg, moverFilter: ui.moverFilter })); } catch { /* private window */ }
+}
+let state = null;
+
+// --- sortable, searchable table with expandable rows ---------------------------------------------------------------
+// columns: [{ key, label, num, value(row) -> sortable, cell(row) -> node|string, cls }]
+function dataTable(id, columns, rows, opts = {}) {
+  const q = (ui.search[opts.search] || "").trim().toLowerCase();
+  let list = q && opts.text ? rows.filter((r) => opts.text(r).toLowerCase().includes(q)) : rows.slice();
+  if (opts.filter) list = list.filter(opts.filter);
+  if (!list.length) return empty(q ? "Nada encontrado para essa busca." : opts.empty);
+  const sort = ui.sort[id];
+  const col = sort && columns.find((c) => c.key === sort.key);
+  if (col && col.value) {
+    list.sort((a, b) => {
+      const x = col.value(a), y = col.value(b);
+      if (x === y) return 0;
+      if (x === null || x === undefined || x === "") return 1;
+      if (y === null || y === undefined || y === "") return -1;
+      return (x < y ? -1 : 1) * sort.dir;
+    });
   }
-  return c;
-}
-
-function renderHeader(s) {
-  const mode = document.getElementById("b-mode");
-  mode.textContent = s.mode === "live" ? "DINHEIRO REAL" : "PAPER (simulação)";
-  mode.className = "badge " + (s.mode === "live" ? "bad" : "");
-  const life = document.getElementById("b-life");
-  life.textContent = s.halted ? "DESLIGADO" : "VIVO";
-  life.className = "badge " + (s.halted ? "bad" : "good");
-  schedulerBadge(document.getElementById("b-sched"), s.scheduler);
-}
-
-function schedulerBadge(node, sc) {
-  if (!sc) { node.textContent = "Agendador: n/d"; node.className = "badge"; }
-  else if (sc.installed === false) { node.textContent = "Agendador: não instalado"; node.className = "badge bad"; }
-  else if (sc.installed === null) { node.textContent = "Agendador: ?"; node.className = "badge warn"; }
-  else {
-    const next = sc.next_run ? new Date(sc.next_run).toLocaleTimeString("pt-BR", { timeStyle: "short" }) : "?";
-    node.textContent = `Agendador: ${sc.state === "Running" ? "rodando agora" : "próximo ciclo " + next}`;
-    node.className = "badge " + (sc.state === "Disabled" ? "warn" : "good");
+  const head = el("tr", {}, columns.map((c) => {
+    const active = sort && sort.key === c.key;
+    const aria = active ? (sort.dir > 0 ? "ascending" : "descending") : "none";
+    const content = c.value
+      ? el("button", { type: "button", title: "Ordenar", onclick: () => {
+          ui.sort[id] = active ? { key: c.key, dir: -sort.dir } : { key: c.key, dir: c.num || c.desc ? -1 : 1 };
+          renderAll();
+        } }, [c.label, el("span", { class: "arrow", text: active ? (sort.dir > 0 ? "▲" : "▼") : "" })])
+      : c.label;
+    return el("th", { class: c.num ? "num" : "", "aria-sort": c.value ? aria : null }, content);
+  }));
+  const open = ui.open[id] || (ui.open[id] = new Set());
+  const body = el("tbody");
+  for (const r of list.slice(0, opts.limit || 200)) {
+    const key = opts.key ? opts.key(r) : JSON.stringify(r).slice(0, 200);
+    const cells = columns.map((c) => el("td", { class: [c.num ? "num" : "", c.cls || ""].join(" ").trim() || null }, c.cell(r)));
+    if (!opts.detail) { body.append(el("tr", {}, cells)); continue; }
+    const isOpen = open.has(key);
+    const toggle = () => { isOpen ? open.delete(key) : open.add(key); renderAll(); };
+    body.append(el("tr", { class: "row" + (isOpen ? " open" : ""), tabindex: 0, "aria-expanded": String(isOpen), onclick: toggle,
+      onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } } }, cells));
+    if (isOpen) body.append(el("tr", { class: "detail" }, el("td", { colspan: columns.length }, opts.detail(r))));
   }
+  return el("div", { class: "table-wrap" }, el("table", {}, [el("thead", {}, head), body]));
 }
 
-function renderAlerts(s) {
-  const box = document.getElementById("alerts");
-  box.replaceChildren();
-  const add = (text, bad) => box.append(el("div", { class: "alert" + (bad ? " bad" : ""), text }));
-  if (s.halted) add("O robô está DESLIGADO: não se pagou (custos + perdas atingiram a linha de corte). Leia o post-mortem no diário e rode 'python -m desk resume' para religar.", true);
-  if (s.scheduler && s.scheduler.installed === false) add("O agendador não está instalado: o robô só roda quando você chama 'python -m desk cycle'. Para ligar: scripts\\install_task.ps1");
-  if (s.last_cycle_minutes_ago === null) add("Nenhum ciclo registrado ainda. O primeiro aparece aqui em até 10 minutos depois de ligar o agendador.");
-  else if (s.last_cycle_minutes_ago > 25) add(`Último ciclo há ${Math.round(s.last_cycle_minutes_ago)} min. O PC dormiu, a sessão do Windows fechou ou um ciclo está demorando.`);
-  const last = s.cycles[0];
-  if (last && last.errors && last.errors.length) add(`O último ciclo teve ${last.errors.length} erro(s); veja "Último ciclo".`);
-}
-
-function renderCards(s) {
-  const e = s.economics;
-  const cards = document.getElementById("cards");
-  cards.replaceChildren(
-    card("Equity", fmtUsd(e.equity), `${fmtSigned(e.net)} desde a banca inicial (${fmtUsd(e.bankroll_start)})`, signClass(e.net)),
-    card("Ganho operando", fmtSigned(e.trading_pnl), "resultado dos trades, antes dos custos", signClass(e.trading_pnl)),
-    card("Custo para existir", fmtUsd(e.costs_total), `24h: ${fmtUsd(e.costs_24h)} de ${fmtUsd(e.budget_24h)} permitidos`,
-         "", e.budget_24h > 0 ? (100 * e.costs_24h) / e.budget_24h : null),
-    card("Fôlego", e.runway_days === null ? "—" : `${Math.round(e.runway_days)} dias`,
-         `até ser desligado se não lucrar (linha ${fmtUsd(e.shutdown_line)})`, e.runway_days !== null && e.runway_days < 14 ? "neg" : ""),
-    card("Queda desde o pico", fmtPct(s.drawdown, 1), `desliga em ${fmtPct(s.drawdown_halt)} (pico ${fmtUsd(s.peak)})`,
-         s.drawdown > s.drawdown_halt / 2 ? "neg" : "", (100 * s.drawdown) / s.drawdown_halt, true),
-    card("Posições abertas", `${s.positions.length}/${s.max_positions}`, `caixa livre ${fmtUsd(s.cash)}`),
-    card("Trades fechados", String(s.closed.count), s.closed.count ? `${s.closed.wins} com lucro, total ${fmtSigned(s.closed.pnl)}` : "nenhum ainda",
-         signClass(s.closed.pnl)),
-    card("Análises (24h)", `${s.analyst_calls_24h}/${s.analyst_cap}`, `analista: ${s.analyst}`, "", (100 * s.analyst_calls_24h) / s.analyst_cap),
-  );
-}
-
-function renderChart(s) {
-  drawEquity("chart", s.equity_curve, { shutdown_line: s.economics.shutdown_line, bankroll_start: s.economics.bankroll_start });
-}
-
-function drawEquity(boxId, curve, e) {
-  const box = document.getElementById(boxId);
-  box.replaceChildren();
-  const pts = curve.map(([t, v]) => [new Date(t).getTime(), v]);
-  if (pts.length < 2) { box.append(el("div", { class: "empty", text: "Sem histórico suficiente ainda: cada ciclo adiciona um ponto." })); return; }
-  const W = 800, H = 240, L = 64, R = 10, T = 12, B = 26;
-  const ys = pts.map((p) => p[1]).concat([e.shutdown_line, e.bankroll_start]);
+// --- line chart with a crosshair tooltip ---------------------------------------------------------------------------
+function lineChart(hostId, curve, refs) {
+  const host = document.getElementById(hostId);
+  const pts = (curve || []).map(([t, v]) => [new Date(t).getTime(), v]).filter(([t, v]) => isNum(t) && isNum(v));
+  if (pts.length < 2) { host.replaceChildren(empty("Sem histórico suficiente ainda: cada ciclo adiciona um ponto.")); return; }
+  const W = 800, H = 230, L = 70, R = 104, T = 14, B = 28;
+  const lines = refs.filter((r) => isNum(r.value));
+  const ys = pts.map((p) => p[1]).concat(lines.map((r) => r.value));
   let lo = Math.min(...ys), hi = Math.max(...ys);
-  const pad = (hi - lo) * 0.08 || 1; lo -= pad; hi += pad;
-  const t0 = pts[0][0], t1 = pts[pts.length - 1][0] || t0 + 1;
+  const pad = (hi - lo) * 0.1 || Math.max(1, Math.abs(hi) * 0.02); lo -= pad; hi += pad;
+  const t0 = pts[0][0], t1 = pts[pts.length - 1][0];
   const x = (t) => L + ((t - t0) / (t1 - t0 || 1)) * (W - L - R);
   const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
-  const ns = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(ns, "svg");
-  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("width", "100%"); svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", "Gráfico da equity do robô");
-  const line = (y0, color, dash) => {
-    const l = document.createElementNS(ns, "line");
-    Object.entries({ x1: L, x2: W - R, y1: y0, y2: y0, stroke: color, "stroke-width": 1.5, "stroke-dasharray": dash || "" })
-      .forEach(([k, v]) => l.setAttribute(k, v));
-    svg.append(l);
-  };
-  const text = (tx, ty, str, anchor = "end") => {
-    const t = document.createElementNS(ns, "text");
-    t.setAttribute("x", tx); t.setAttribute("y", ty); t.setAttribute("text-anchor", anchor); t.textContent = str; svg.append(t);
-  };
   const css = getComputedStyle(document.documentElement);
-  line(y(e.bankroll_start), css.getPropertyValue("--muted"), "2 4");
-  line(y(e.shutdown_line), css.getPropertyValue("--bad"), "6 4");
-  text(L - 6, y(hi - pad) + 4, fmtUsd(hi - pad)); text(L - 6, y(lo + pad) + 4, fmtUsd(lo + pad));
-  text(L - 6, y(e.shutdown_line) + 4, fmtUsd(e.shutdown_line));
-  text(L, H - 6, fmtTime(new Date(t0).toISOString()), "start"); text(W - R, H - 6, fmtTime(new Date(t1).toISOString()));
-  const poly = document.createElementNS(ns, "polyline");
-  poly.setAttribute("points", pts.map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(" "));
-  poly.setAttribute("fill", "none"); poly.setAttribute("stroke", css.getPropertyValue("--chart")); poly.setAttribute("stroke-width", 2.2);
-  svg.append(poly);
-  box.append(svg);
-}
-
-function renderLastCycle(s) {
-  const box = document.getElementById("last-cycle");
-  box.replaceChildren();
-  const c = s.cycles[0];
-  if (!c) { box.append(el("div", { class: "empty", text: "Nenhum ciclo ainda." })); return; }
-  const stat = (n, t) => el("div", { class: "stat" }, [el("div", { class: "n", text: String(n ?? 0) }), el("div", { class: "t", text: t })]);
-  box.append(
-    el("div", { class: "muted", text: `${fmtTime(c.ts)} (há ${Math.round(s.last_cycle_minutes_ago)} min)` }),
-    el("div", { class: "stats" }, [stat(c.scanned, "varridos"), stat(c.candidates, "candidatos"), stat(c.analyzed, "analisados"),
-      stat(c.entries, "entradas"), stat(c.exits, "saídas"), stat(c.settled, "liquidados")]),
-  );
-  const skips = Object.entries(c.skips || {});
-  box.append(el("div", { class: "muted", text: "Por que não entrou:" }));
-  box.append(skips.length ? el("div", { class: "chips" }, skips.map(([k, n]) => { const b = label(k); b.textContent += ` × ${n}`; return b; }))
-                          : el("div", { class: "empty", text: "nada para pular" }));
-  if (c.errors && c.errors.length) {
-    box.append(el("div", { class: "muted", text: "Erros:", style: "margin-top:8px" }));
-    box.append(el("pre", {}, c.errors.join("\n")));
+  const color = (name) => css.getPropertyValue(name).trim();
+  const root = svg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", tabindex: 0,
+    "aria-label": `Gráfico do saldo: de ${fmtUsd(pts[0][1])} a ${fmtUsd(pts[pts.length - 1][1])}. Use as setas para percorrer.` });
+  for (let i = 0; i <= 3; i++) {  // hairline grid with clean ticks
+    const v = lo + pad + ((hi - lo - 2 * pad) * i) / 3;
+    root.append(svg("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), stroke: color("--grid"), "stroke-width": 1 }));
+    const t = svg("text", { x: L - 8, y: y(v) + 4, "text-anchor": "end" }); t.textContent = fmtUsd(v); root.append(t);
   }
+  for (const r of lines) {  // reference lines, labelled directly on the right
+    root.append(svg("line", { x1: L, x2: W - R, y1: y(r.value), y2: y(r.value), stroke: color(r.color), "stroke-width": 1.5 }));
+    const t = svg("text", { x: W - R + 6, y: y(r.value) + 4 }); t.textContent = r.label; root.append(t);
+  }
+  const d = pts.map(([t, v], i) => `${i ? "L" : "M"}${x(t).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  root.append(svg("path", { d: `${d} L${x(t1).toFixed(1)},${H - B} L${x(t0).toFixed(1)},${H - B} Z`, fill: color("--series"), "fill-opacity": 0.1 }));
+  root.append(svg("path", { d, fill: "none", stroke: color("--series"), "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+  const [lt, lv] = pts[pts.length - 1];
+  root.append(svg("circle", { cx: x(lt), cy: y(lv), r: 4, fill: color("--series"), stroke: color("--panel"), "stroke-width": 2 }));
+  const end = svg("text", { x: x(lt) - 8, y: y(lv) + (y(lv) - T < 24 ? 20 : -10), "text-anchor": "end" }); end.textContent = fmtUsd(lv); end.style.fill = color("--text"); end.style.fontWeight = "600"; root.append(end);
+  for (const [tx, anchor] of [[t0, "start"], [t1, "end"]]) {
+    const t = svg("text", { x: x(tx), y: H - 8, "text-anchor": anchor }); t.textContent = fmtTime(new Date(tx).toISOString()); root.append(t);
+  }
+  const cross = svg("line", { y1: T, y2: H - B, stroke: color("--muted"), "stroke-width": 1, visibility: "hidden" });
+  const dot = svg("circle", { r: 5, fill: color("--series"), stroke: color("--panel"), "stroke-width": 2, visibility: "hidden" });
+  root.append(cross, dot);
+  const tip = el("div", { class: "tip", hidden: "" });
+  let idx = pts.length - 1;
+  const show = (i) => {
+    idx = Math.max(0, Math.min(pts.length - 1, i));
+    const [t, v] = pts[idx];
+    for (const n of [cross]) { n.setAttribute("x1", x(t)); n.setAttribute("x2", x(t)); n.setAttribute("visibility", "visible"); }
+    dot.setAttribute("cx", x(t)); dot.setAttribute("cy", y(v)); dot.setAttribute("visibility", "visible");
+    tip.replaceChildren(el("strong", { text: fmtUsd(v) }), el("span", { class: "muted", text: fmtTime(new Date(t).toISOString()) }));
+    const box = root.getBoundingClientRect(), scale = box.width / W;
+    tip.style.left = `${Math.min(Math.max(x(t) * scale, 60), box.width - 60)}px`;
+    tip.style.top = `${y(v) * scale}px`;
+    tip.hidden = false;
+  };
+  const hide = () => { cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); tip.hidden = true; };
+  const nearest = (px) => {
+    const box = root.getBoundingClientRect();
+    const t = t0 + (((px - box.left) * (W / box.width) - L) / (W - L - R)) * (t1 - t0);
+    let lo2 = 0, hi2 = pts.length - 1;
+    while (hi2 - lo2 > 1) { const mid = (lo2 + hi2) >> 1; (pts[mid][0] < t ? (lo2 = mid) : (hi2 = mid)); }
+    return Math.abs(pts[lo2][0] - t) < Math.abs(pts[hi2][0] - t) ? lo2 : hi2;
+  };
+  root.addEventListener("pointermove", (e) => show(nearest(e.clientX)));
+  root.addEventListener("pointerleave", hide);
+  root.addEventListener("focus", () => show(idx));
+  root.addEventListener("blur", hide);
+  root.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft") { e.preventDefault(); show(idx - 1); }
+    if (e.key === "ArrowRight") { e.preventDefault(); show(idx + 1); }
+  });
+  const sample = pts.filter((_, i) => i % Math.max(1, Math.floor(pts.length / 12)) === 0 || i === pts.length - 1);
+  const asTable = el("details", {}, [el("summary", { text: "ver em tabela" }), el("div", { class: "table-wrap" }, el("table", {}, [
+    el("thead", {}, el("tr", {}, [el("th", { text: "Quando" }), el("th", { class: "num", text: "Saldo" })])),
+    el("tbody", {}, sample.map(([t, v]) => el("tr", {}, [el("td", { text: fmtTime(new Date(t).toISOString()) }), el("td", { class: "num", text: fmtUsd(v) })]))),
+  ]))]);
+  host.replaceChildren(root, tip, asTable);
 }
 
-function render(s) {
-  renderHeader(s); renderAlerts(s); renderCards(s); renderChart(s); renderLastCycle(s);
-  table("decisions", [["Quando"], ["Mercado"], ["Preço", "num"], ["Justo (Claude)", "num"], ["Vantagem", "num"], ["Confiança"], ["Decisão"], ["Detalhe"]],
-    s.decisions.slice(0, 20).map((d) => [[fmtTime(d.ts)], [marketLink(d.question, d.slug), "q"], [fmtPct(d.price), "num"], [fmtPct(d.fair_prob), "num"],
-      [`${fmtNum(d.edge_pp, 1)} pp`, "num"], [CONFIDENCE[d.confidence] || d.confidence || "—"], [label(d.decision)], [d.detail || ""]]),
-    "Nenhuma decisão registrada ainda: aparecem aqui os mercados que o Claude analisou e o que o robô fez com cada um.");
-  table("positions", [["Mercado"], ["Lado"], ["Cotas", "num"], ["Entrada", "num"], ["Custo", "num"], ["Justo na entrada", "num"], ["Sair até"], ["Condição de saída"]],
-    s.positions.map((p) => [[marketLink(p.question, p.slug), "q"], [p.outcome], [fmtNum(p.shares), "num"], [fmtPct(p.avg_price, 1), "num"],
-      [fmtUsd(p.cost), "num"], [fmtPct(p.entry_fair_prob), "num"], [fmtTime(p.deadline)], [p.exit_condition]]),
-    "Nenhuma posição aberta.");
-  table("trades", [["Quando"], ["Mercado"], ["Ação"], ["Cotas", "num"], ["Preço", "num"], ["Taxa", "num"], ["Caixa", "num"], ["Motivo"]],
-    s.trades.map((t) => [[fmtTime(t.ts)], [t.question, "q"], [ACTIONS[t.action] || t.action], [fmtNum(t.shares), "num"],
-      [fmtPct(t.price, 1), "num"], [fmtUsd(t.fee), "num"], [el("span", { class: signClass(t.cash_delta), text: fmtSigned(t.cash_delta) }), "num"],
-      [LABELS[t.reason] ? label(t.reason) : t.reason]]),
-    "Nenhum trade ainda.");
-  table("cycles", [["Quando"], ["Varridos", "num"], ["Candidatos", "num"], ["Analisados", "num"], ["Entradas", "num"], ["Saídas", "num"], ["Equity", "num"], ["Erros", "num"]],
-    s.cycles.map((c) => [[fmtTime(c.ts)], [c.scanned ?? 0, "num"], [c.candidates ?? 0, "num"], [c.analyzed ?? 0, "num"], [c.entries ?? 0, "num"],
-      [c.exits ?? 0, "num"], [fmtUsd(c.equity), "num"], [(c.errors || []).length, "num"]]),
-    "Nenhum ciclo ainda.");
-  document.getElementById("journal").textContent = s.journal_tail.join("\n") || "(vazio: o diário recebe entradas, saídas e relatórios)";
-  document.getElementById("log").textContent = s.log_tail.join("\n") || "(vazio)";
-  renderMemes(s.memes);
+function sparkline(curve) {
+  const pts = (curve || []).map(([t, v]) => [new Date(t).getTime(), v]).filter(([t, v]) => isNum(t) && isNum(v));
+  const W = 200, H = 48;
+  const root = svg("svg", { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "none", "aria-hidden": "true" });
+  if (pts.length < 2) return root;
+  const vs = pts.map((p) => p[1]); let lo = Math.min(...vs), hi = Math.max(...vs);
+  if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
+  const t0 = pts[0][0], t1 = pts[pts.length - 1][0] || t0 + 1;
+  const d = pts.map(([t, v], i) => `${i ? "L" : "M"}${((t - t0) / (t1 - t0 || 1) * (W - 4) + 2).toFixed(1)},${(H - 4 - (v - lo) / (hi - lo) * (H - 8)).toFixed(1)}`).join(" ");
+  root.append(svg("path", { d, fill: "none", stroke: getComputedStyle(document.documentElement).getPropertyValue("--series").trim(),
+    "stroke-width": 2, "vector-effect": "non-scaling-stroke", "stroke-linejoin": "round" }));
+  return root;
 }
 
-function readinessCard(r) {
-  const progress = Math.min(r.days / Math.max(r.min_days, 1), r.closed / Math.max(r.min_trades, 1), r.net > 0 ? 1 : 0);
-  return card("Pronto p/ dinheiro real?", r.ready ? "Sim" : "Ainda não",
-    `${Math.min(r.days, r.min_days)}/${r.min_days} dias · ${Math.min(r.closed, r.min_trades)}/${r.min_trades} trades · ${fmtSigned(r.net)} após custos`,
-    r.ready ? "pos" : "", 100 * progress);
+function tile(labelText, value, sub, valueClass = "", meter = null, danger = false) {
+  return el("div", { class: "tile" }, [
+    el("div", { class: "label", text: labelText }),
+    el("div", { class: "value " + valueClass, text: value }),
+    sub ? el("div", { class: "sub" }, sub) : null,
+    meter === null ? null : el("div", { class: "meter" + (danger ? " danger" : "") }, (() => { const d = el("div"); d.style.width = Math.max(0, Math.min(100, meter)) + "%"; return d; })()),
+  ]);
+}
+const facts = (pairs) => pairs.filter(Boolean).map(([k, v]) => el("span", {}, [k + " ", el("b", { text: v })]));
+
+function schedulerText(sc, every) {
+  if (!sc) return ["agendador: n/d", ""];
+  if (sc.installed === false) return ["não agendado", "bad"];
+  if (sc.installed === null) return ["agendador: ?", "warn"];
+  if (sc.state === "Disabled") return ["pausado no Agendador", "warn"];
+  return [sc.state === "Running" ? "rodando agora" : `próximo ciclo ${fmtClock(sc.next_run)}`, "good"];
 }
 
+// --- alerts --------------------------------------------------------------------------------------------------------
+const dnsBlocked = (s) => ((s.cycles[0] || {}).errors || []).some((e) => e.includes("DNS"));
+function memesAlerts(m) {
+  if (!m) return [];
+  const out = [];
+  if (m.halted) out.push([true, m.halt_reason === "manual"
+    ? "Compras pausadas pela venda geral que você pediu. Para religar: python -m desk memes-resume"
+    : "Agente DESLIGADO: a banca caiu até a linha de corte. Ele segue vendendo pelas regras. Para religar: python -m desk memes-resume"]);
+  for (const u of m.uncertain || []) out.push([true, `${u.kind === "compra" ? "Compra" : "Venda"} incerta de ${u.symbol} desde ${fmtTime(u.since)}: o agente está conferindo a carteira.`]);
+  if (m.scheduler && m.scheduler.installed === false) out.push([false, "A tarefa das memecoins não está agendada. Para ligar: scripts\\install_task.ps1"]);
+  if (isNum(m.last_cycle_minutes_ago) && m.last_cycle_minutes_ago > 15) out.push([false, `Último ciclo das memecoins ${ago(m.last_cycle_minutes_ago)}: o PC dormiu ou a sessão fechou?`]);
+  return out;
+}
+function polyAlerts(s) {
+  const out = [];
+  if (s.halted) out.push([true, "Robô DESLIGADO: custos + perdas atingiram a linha de corte. Leia o post-mortem no diário e rode python -m desk resume."]);
+  if (s.scheduler && s.scheduler.installed === false) out.push([false, "O agendador não está instalado. Para ligar: scripts\\install_task.ps1"]);
+  if (s.last_cycle_minutes_ago === null) out.push([false, "Nenhum ciclo registrado ainda."]);
+  else if (s.last_cycle_minutes_ago > 25) out.push([false, `Último ciclo ${ago(s.last_cycle_minutes_ago)}: o PC dormiu ou a sessão fechou?`]);
+  if (dnsBlocked(s)) out.push([false, "A rede desta casa bloqueia o Polymarket (bloqueio do Brasil). O robô roda a cada 10 min, mas não consegue ver os mercados. Não contorne."]);
+  return out;
+}
+const alertNodes = (list, who) => list.map(([bad, text]) => el("div", { class: "alert" + (bad ? " bad" : "") }, [who ? el("b", { text: who }) : null, el("span", { text })]));
+
+// --- RESUMO --------------------------------------------------------------------------------------------------------
+function robotCard(id, { name, mode, halted, sched, equity, start, curve, factsList, note, extra }) {
+  const net = equity - start, pct = start ? net / start : 0;
+  const [schedText, schedKind] = sched;
+  fill(id,
+    el("div", { class: "top" }, [el("span", { class: "name", text: name }),
+      pill(mode === "live" ? "dinheiro real" : "simulação", mode === "live" ? "bad" : ""),
+      pill(halted ? "desligado" : "ligado", halted ? "bad" : "good", true),
+      schedKind === "good" ? null : pill(schedText, schedKind),  // only when something is wrong with the schedule
+      el("span", { class: "go", text: "abrir →" })]),
+    el("div", { class: "hero" }, [
+      el("div", {}, [el("div", { class: "value", text: fmtUsd(equity) }),
+        el("div", { class: "delta" }, [el("span", { class: signClass(net), text: `${fmtSigned(net)} (${pct > 0 ? "+" : ""}${fmtPct(pct, 1)})` }),
+          el("span", { class: "muted", text: ` desde ${fmtUsd(start)}` })])]),
+      sparkline(curve)]),
+    el("div", { class: "facts" }, facts(factsList)),
+    note ? el("div", { class: "note", text: note }) : null,
+    extra || null,
+  );
+}
+
+function renderResumo(s) {
+  const m = s.memes;
+  fill("r-alerts", ...alertNodes(memesAlerts(m), "Memecoins:"), ...alertNodes(polyAlerts(s).filter(([, text]) => !text.includes("bloqueia o Polymarket")), "Polymarket:"));
+  if (m) {
+    const r = m.readiness, progress = Math.min(r.days / Math.max(r.min_days, 1), r.closed / Math.max(r.min_trades, 1), r.net > 0 ? 1 : 0);
+    robotCard("r-memes", { name: "Memecoins", mode: m.mode, halted: m.halted, sched: schedulerText(m.scheduler), equity: m.equity,
+      start: m.bankroll_start, curve: m.equity_curve,
+      factsList: [["posições", `${m.positions.length}/${m.max_positions}`], ["trades fechados", `${m.closed.count} (${m.closed.wins} com lucro)`],
+        ["último ciclo", ago(m.last_cycle_minutes_ago)]],
+      extra: el("div", {}, [el("div", { class: "facts" }, [el("span", {}, ["Pronto para dinheiro real? ", el("b", { text: r.ready ? "sim" : "ainda não" }),
+          ` · ${Math.min(r.days, r.min_days)}/${r.min_days} dias · ${Math.min(r.closed, r.min_trades)}/${r.min_trades} trades`])]),
+        el("div", { class: "meter" }, (() => { const d = el("div"); d.style.width = 100 * progress + "%"; return d; })())]) });
+  } else {
+    fill("r-memes", el("div", { class: "top" }, [el("span", { class: "name", text: "Memecoins" }), pill("não iniciado")]),
+      empty("O agente de memecoins ainda não rodou."));
+  }
+  const e = s.economics;
+  robotCard("r-poly", { name: "Polymarket", mode: s.mode, halted: s.halted, sched: schedulerText(s.scheduler), equity: e.equity,
+    start: e.bankroll_start, curve: s.equity_curve,
+    factsList: [["posições", `${s.positions.length}/${s.max_positions}`], ["fôlego", isNum(e.runway_days) ? `${Math.round(e.runway_days)} dias` : "—"],
+      ["último ciclo", ago(s.last_cycle_minutes_ago)]],
+    note: dnsBlocked(s) ? "Sem acesso: a rede desta casa bloqueia o Polymarket. O robô roda, mas não vê os mercados." : null });
+
+  const movers = (m && m.movers && m.movers.now) || [];
+  fill("r-movers", movers.length ? el("div", { class: "compact-list" }, movers.slice(0, 6).map((t) => el("div", {}, [
+    el("span", { class: "sym" }, fomoLink(t.mint, t.symbol)), chg(t.change_1h), el("span", { class: "muted", text: `em 1h · ${fmtCompact(t.mcap)}` }),
+    el("span", { class: "grow" }), t.verdict ? label(t.verdict) : pill("passa no filtro", "good")]))) : empty("Aparece depois do próximo ciclo das memecoins."));
+  const trades = (m && m.trades) || [];
+  fill("r-trades", trades.length ? el("div", { class: "compact-list" }, trades.slice(0, 6).map((t) => el("div", {}, [
+    el("span", { class: "sym" }, fomoLink(t.mint, t.symbol)), el("span", { text: ACTIONS[t.side] || t.side }), signed(t.cash_delta),
+    el("span", { class: "grow" }), el("span", { class: "muted", text: fmtTime(t.ts) })]))) : empty("Nenhuma compra ou venda ainda."));
+}
+
+// --- MEMECOINS -----------------------------------------------------------------------------------------------------
+const MEMES_SEGS = [["decisions", "Tokens checados"], ["trades", "Compras e vendas"], ["review", "Os filtros acertam?"], ["cycle", "Último ciclo"], ["journal", "Diário"]];
+const MEMES_HINTS = {
+  decisions: "Cada token que passou do filtro de mercado e foi checado a fundo (X, segurança, cotação, Claude), e o que ele decidiu.",
+  review: "E se ele tivesse comprado cada token checado? Simula as regras de saída nas 24h seguintes. Em \"Comprou\", média positiva é bom; num filtro que rejeitou, média negativa = ele evitou perdedores.",
+  trades: "", cycle: "", journal: "",
+};
 function renderMemes(m) {
-  document.getElementById("memes-empty").hidden = !!m;
-  document.getElementById("memes").hidden = !m;
-  const mode = document.getElementById("m-mode"), life = document.getElementById("m-life");
-  if (!m) {
-    mode.textContent = "não iniciado"; mode.className = "badge"; life.hidden = true;
-    schedulerBadge(document.getElementById("m-sched"), null);
-    return;
+  document.getElementById("m-empty").hidden = !!m;
+  document.getElementById("m-body").hidden = !m;
+  if (!m) { fill("m-pills"); return; }
+  const [schedText, schedKind] = schedulerText(m.scheduler);
+  fill("m-pills", pill(m.mode === "live" ? "dinheiro real" : "simulação", m.mode === "live" ? "bad" : ""),
+    pill(m.halted ? "desligado" : "ligado", m.halted ? "bad" : "good", true), pill(schedText, schedKind),
+    m.auto_trade ? null : pill("só alertas", "warn"));
+  fill("m-alerts", ...alertNodes(memesAlerts(m)));
+  const r = m.readiness, progress = Math.min(r.days / Math.max(r.min_days, 1), r.closed / Math.max(r.min_trades, 1), r.net > 0 ? 1 : 0);
+  fill("m-tiles",
+    tile("Saldo", fmtUsd(m.equity), [signed(m.net), ` desde ${fmtUsd(m.bankroll_start)}`]),
+    tile("Posições abertas", `${m.positions.length} de ${m.max_positions}`, `caixa livre ${fmtUsd(m.cash)}`),
+    tile("Trades fechados", String(m.closed.count), m.closed.count ? [`${m.closed.wins} com lucro · `, signed(m.closed.pnl)] : "nenhum ainda"),
+    tile("Pronto para dinheiro real?", r.ready ? "Sim" : "Ainda não",
+      `${Math.min(r.days, r.min_days)}/${r.min_days} dias · ${Math.min(r.closed, r.min_trades)}/${r.min_trades} trades · ${fmtSigned(r.net)} após custos`,
+      r.ready ? "pos" : "", 100 * progress));
+  fill("m-facts", ...facts([["custo para existir", `${fmtUsd(m.costs_total)} (24h ${fmtUsd(m.costs_24h)})`],
+    ["queda do pico", `${fmtPct(m.drawdown, 1)} · desliga em ${fmtUsd(m.shutdown_line)}`],
+    ["checagens do Claude hoje", `${m.vets_24h}/${m.vet_cap}`], ["último ciclo", ago(m.last_cycle_minutes_ago)]]));
+  document.getElementById("m-chart-sub").textContent = "últimos 30 dias · passe o mouse para ver cada ponto";
+  lineChart("m-chart", m.equity_curve, [
+    { value: m.bankroll_start, label: "banca inicial", color: "--muted" },
+    { value: m.shutdown_line, label: "desliga aqui", color: "--critical" }]);
+
+  fill("m-positions", dataTable("m-positions", [
+    { key: "token", label: "Token", value: (p) => p.symbol, cell: (p) => fomoLink(p.mint, `${p.symbol} (${p.name})`), cls: "wide" },
+    { key: "cost", label: "Custo", num: true, value: (p) => p.cost, cell: (p) => fmtUsd(p.cost) },
+    { key: "value", label: "Vale agora", num: true, value: (p) => p.value, cell: (p) => fmtUsd(p.value) },
+    { key: "chg", label: "Variação", num: true, value: (p) => p.change_pct, cell: (p) => chg(p.change_pct) },
+    { key: "peak", label: "Pico", num: true, value: (p) => p.peak_pct, cell: (p) => chg(p.peak_pct) },
+    { key: "since", label: "Desde", desc: true, value: (p) => p.opened_at, cell: (p) => fmtTime(p.opened_at) },
+  ], m.positions, { empty: "Nenhuma posição aberta agora.", key: (p) => p.mint,
+    detail: (p) => kv([["Metade já vendida (lucro)", p.take_profit_done ? "sim" : "não"], ["Aberta em", fmtTime(p.opened_at)],
+      ["Endereço", el("code", { text: p.mint })]]) }));
+
+  const seg = ui.seg.memes;
+  document.getElementById("m-hint").textContent = MEMES_HINTS[seg] || "";
+  document.querySelector('[data-search="memes"]').hidden = !["decisions", "trades"].includes(seg);
+  if (seg === "decisions") {
+    fill("m-detail", dataTable("m-decisions", [
+      { key: "ts", label: "Quando", desc: true, value: (d) => d.ts, cell: (d) => fmtTime(d.ts) },
+      { key: "token", label: "Token", value: (d) => d.symbol, cell: (d) => fomoLink(d.mint, d.symbol) },
+      { key: "decision", label: "Decisão", value: (d) => (LABELS[d.decision] || [d.decision])[0], cell: (d) => label(d.decision) },
+      { key: "mcap", label: "Market cap", num: true, value: (d) => d.market_cap_usd, cell: (d) => fmtCompact(d.market_cap_usd) },
+    ], m.decisions, { search: "memes", text: (d) => `${d.symbol} ${d.mint}`, key: (d) => d.ts + d.mint + d.decision,
+      empty: "Nenhum token passou do filtro de mercado ainda.",
+      detail: (d) => el("div", {}, [kv([["Preço", isNum(d.price_usd) ? "$" + Number(d.price_usd).toPrecision(4) : "—"],
+        ["Liquidez", fmtCompact(d.liquidity_usd)], ["Market cap", fmtCompact(d.market_cap_usd)]]),
+        d.detail ? el("div", { class: "detail-text", text: d.detail }) : null]) }));
+  } else if (seg === "trades") {
+    fill("m-detail", dataTable("m-trades", [
+      { key: "ts", label: "Quando", desc: true, value: (t) => t.ts, cell: (t) => fmtTime(t.ts) },
+      { key: "token", label: "Token", value: (t) => t.symbol, cell: (t) => fomoLink(t.mint, t.symbol) },
+      { key: "side", label: "Ação", value: (t) => t.side, cell: (t) => ACTIONS[t.side] || t.side },
+      { key: "usd", label: "Valor", num: true, value: (t) => t.usd, cell: (t) => fmtUsd(t.usd) },
+      { key: "cash", label: "Caixa", num: true, value: (t) => t.cash_delta, cell: (t) => signed(t.cash_delta) },
+      { key: "reason", label: "Motivo", value: (t) => t.reason, cell: (t) => (LABELS[t.reason] ? label(t.reason) : t.reason) },
+    ], m.trades, { search: "memes", text: (t) => `${t.symbol} ${t.mint}`, key: (t) => t.ts + t.mint + t.side, empty: "Nenhuma compra ou venda ainda.",
+      detail: (t) => kv([["Preço", isNum(t.price_usd) ? "$" + Number(t.price_usd).toPrecision(6) : "—"], ["Taxa da rede", fmtUsd(t.fee_usd)],
+        t.signature ? ["Assinatura", el("code", { text: t.signature })] : null]) }));
+  } else if (seg === "review") {
+    const waiting = (r) => [[r.open, "abertas (<24h)"], [r.pending, "na fila"], [r.no_data, "sem dados"], [r.errors, "com erro"]]
+      .filter(([n]) => n).map(([n, t]) => `${n} ${t}`).join(", ") || "—";
+    const ret = (x) => el("span", { class: signClass(x), text: isNum(x) ? (x > 0 ? "+" : "") + fmtPct(x) : "—" });
+    fill("m-detail", dataTable("m-review", [
+      { key: "decision", label: "Decisão", value: (r) => (LABELS[r.decision] || [r.decision])[0], cell: (r) => label(r.decision) },
+      { key: "count", label: "Casos", num: true, value: (r) => r.count, cell: (r) => String(r.count) },
+      { key: "avg", label: "Média em 24h", num: true, value: (r) => r.average, cell: (r) => ret(r.average) },
+      { key: "wins", label: "Ganhou", num: true, value: (r) => r.wins, cell: (r) => `${r.wins}/${r.count}` },
+      { key: "worst", label: "Pior", num: true, value: (r) => r.worst, cell: (r) => ret(r.worst) },
+      { key: "best", label: "Melhor", num: true, value: (r) => r.best, cell: (r) => ret(r.best) },
+      { key: "wait", label: "Ainda sem resultado", cell: (r) => waiting(r) },
+    ], m.review || [], { empty: "Nenhum token checado a fundo ainda." }));
+  } else if (seg === "cycle") {
+    const c = m.cycles[0];
+    if (!c) { fill("m-detail", empty("Nenhum ciclo ainda.")); return; }
+    const stat = (n, t) => el("div", {}, [el("div", { class: "n", text: String(n ?? 0) }), el("div", { class: "t", text: t })]);
+    const skips = Object.entries(c.skips || {}).sort((a, b) => b[1] - a[1]);
+    fill("m-detail",
+      el("div", { class: "muted", text: `${fmtTime(c.ts)} (${ago(m.last_cycle_minutes_ago)})` }),
+      el("div", { class: "stats" }, [stat(c.discovered, "descobertos"), stat(c.candidates, "passaram no mercado"), stat(c.x_checked, "olhados no X"),
+        stat(c.checked, "checados a fundo"), stat(c.vetted, "pelo Claude"), stat(c.entries, "compras"), stat(c.exits, "vendas")]),
+      el("div", { class: "muted", text: "Por que não comprou:", style: "margin-bottom:6px" }),
+      skips.length ? el("div", { class: "chips" }, skips.map(([k, n]) => { const b = label(k); b.append(el("span", { class: "n", text: `× ${n}` })); return b; }))
+                   : empty("nada para pular"),
+      c.errors && c.errors.length ? el("div", { style: "margin-top:12px" }, [el("div", { class: "muted", text: "Erros:" }), el("pre", { text: c.errors.join("\n") })]) : null);
+  } else {
+    fill("m-detail", el("pre", { text: m.journal_tail.join("\n") || "(vazio: o diário recebe compras, vendas e o post-mortem)" }));
   }
-  life.hidden = false;
-  mode.textContent = (m.mode === "live" ? "DINHEIRO REAL" : "PAPER (simulação)") + (m.auto_trade ? "" : " · só alertas");
-  mode.className = "badge " + (m.mode === "live" ? "bad" : "");
-  life.textContent = m.halted ? "DESLIGADO" : "VIVO";
-  life.className = "badge " + (m.halted ? "bad" : "good");
-  schedulerBadge(document.getElementById("m-sched"), m.scheduler);
-
-  const alerts = document.getElementById("m-alerts");
-  alerts.replaceChildren();
-  const add = (text, bad) => alerts.append(el("div", { class: "alert" + (bad ? " bad" : ""), text }));
-  if (m.halted) add(m.halt_reason === "manual"
-    ? "Compras das memecoins pausadas pela venda geral que você pediu. Para religar: python -m desk memes-resume"
-    : "O agente de memecoins está DESLIGADO: a banca caiu até a linha de corte. Ele não compra nem gasta, mas segue vendendo pelas regras. Para religar: python -m desk memes-resume", true);
-  for (const u of m.uncertain || []) add(`${u.kind === "compra" ? "Compra" : "Venda"} incerta de ${u.symbol} desde ${fmtTime(u.since)}: a resposta da Jupiter se perdeu e o agente está conferindo a carteira.`, true);
-  if (m.scheduler && m.scheduler.installed === false) add("A tarefa das memecoins não está agendada: ele só roda quando você chama 'python -m desk memes'. Para ligar: scripts\\install_task.ps1");
-  if (m.last_cycle_minutes_ago !== null && m.last_cycle_minutes_ago > 15) add(`Último ciclo das memecoins há ${Math.round(m.last_cycle_minutes_ago)} min.`);
-  const lastCycle = m.cycles[0];
-  if (lastCycle && lastCycle.errors && lastCycle.errors.length) add(`O último ciclo das memecoins teve ${lastCycle.errors.length} erro(s); veja "Último ciclo".`);
-
-  document.getElementById("m-cards").replaceChildren(
-    card("Equity", fmtUsd(m.equity), `${fmtSigned(m.net)} desde a banca inicial (${fmtUsd(m.bankroll_start)})`, signClass(m.net)),
-    card("Custo para existir", fmtUsd(m.costs_total), `24h: ${fmtUsd(m.costs_24h)} (checagens do Claude e aluguel)`),
-    card("Queda desde o pico", fmtPct(m.drawdown, 1), `desliga em ${fmtUsd(m.shutdown_line)} (pico ${fmtUsd(m.peak)})`,
-         m.drawdown > m.drawdown_halt / 2 ? "neg" : "", (100 * m.drawdown) / m.drawdown_halt, true),
-    card("Posições", `${m.positions.length}/${m.max_positions}`, `caixa livre ${fmtUsd(m.cash)}`),
-    card("Trades fechados", String(m.closed.count), m.closed.count ? `${m.closed.wins} com lucro, total ${fmtSigned(m.closed.pnl)}` : "nenhum ainda",
-         signClass(m.closed.pnl)),
-    readinessCard(m.readiness),
-    card("Checagens do Claude (24h)", `${m.vets_24h}/${m.vet_cap}`, m.analyst === "none" ? "desligadas: só as regras" : "ele só compra o que o Claude não vetar",
-         "", m.vet_cap > 0 ? (100 * m.vets_24h) / m.vet_cap : null),
-  );
-  drawEquity("m-chart", m.equity_curve, { shutdown_line: m.shutdown_line, bankroll_start: m.bankroll_start });
-
-  const box = document.getElementById("m-last");
-  box.replaceChildren();
-  const c = m.cycles[0];
-  if (!c) box.append(el("div", { class: "empty", text: "Nenhum ciclo ainda." }));
-  else {
-    const stat = (n, t) => el("div", { class: "stat" }, [el("div", { class: "n", text: String(n ?? 0) }), el("div", { class: "t", text: t })]);
-    box.append(
-      el("div", { class: "muted", text: `${fmtTime(c.ts)} (há ${Math.round(m.last_cycle_minutes_ago)} min)` }),
-      el("div", { class: "stats" }, [stat(c.discovered, "descobertos"), stat(c.candidates, "passaram no mercado"), stat(c.x_checked, "olhados no X"), stat(c.checked, "checados a fundo"),
-        stat(c.vetted, "pelo Claude"), stat(c.entries, "compras"), stat(c.exits, "vendas")]),
-    );
-    const skips = Object.entries(c.skips || {});
-    box.append(el("div", { class: "muted", text: "Por que não comprou:" }));
-    box.append(skips.length ? el("div", { class: "chips" }, skips.map(([k, n]) => { const b = label(k); b.textContent += ` × ${n}`; return b; }))
-                            : el("div", { class: "empty", text: "nada para pular" }));
-    if (c.errors && c.errors.length) {
-      box.append(el("div", { class: "muted", text: "Erros:", style: "margin-top:8px" }));
-      box.append(el("pre", {}, c.errors.join("\n")));
-    }
-  }
-
-  const pct = (x) => (x > 0 ? "+" : "") + fmtNum(x, 0) + "%";
-  table("m-positions", [["Token"], ["Custo", "num"], ["Vale agora", "num"], ["Variação", "num"], ["Pico", "num"], ["Metade vendida"], ["Desde"]],
-    m.positions.map((p) => [[fomoLink(p.mint, `${p.symbol} (${p.name})`), "q"], [fmtUsd(p.cost), "num"], [fmtUsd(p.value), "num"],
-      [el("span", { class: signClass(p.change_pct), text: pct(p.change_pct) }), "num"], [pct(p.peak_pct), "num"],
-      [p.take_profit_done ? "sim" : "não"], [fmtTime(p.opened_at)]]),
-    "Nenhuma posição aberta.");
-  table("m-decisions", [["Quando"], ["Token"], ["Preço", "num"], ["Liquidez", "num"], ["Market cap", "num"], ["Decisão"], ["Detalhe"]],
-    m.decisions.map((d) => [[fmtTime(d.ts)], [fomoLink(d.mint, d.symbol)], [d.price_usd === null ? "—" : "$" + Number(d.price_usd).toPrecision(4), "num"],
-      [fmtUsd(d.liquidity_usd), "num"], [fmtUsd(d.market_cap_usd), "num"], [label(d.decision)], [d.detail || "", "q"]]),
-    "Nenhum token passou dos filtros de mercado ainda. Os rejeitados de cara (liquidez, idade, volume) só aparecem nos contadores do último ciclo.");
-  table("m-trades", [["Quando"], ["Token"], ["Ação"], ["Valor", "num"], ["Caixa", "num"], ["Motivo"]],
-    m.trades.map((t) => [[fmtTime(t.ts)], [fomoLink(t.mint, t.symbol)], [ACTIONS[t.side] || t.side], [fmtUsd(t.usd), "num"],
-      [el("span", { class: signClass(t.cash_delta), text: fmtSigned(t.cash_delta) }), "num"], [LABELS[t.reason] ? label(t.reason) : t.reason]]),
-    "Nenhuma compra ou venda ainda.");
-  const mv = m.movers || { now: [], day: [] };
-  const chg = (x) => el("span", { class: signClass(x / 100), text: (x > 0 ? "+" : "") + fmtNum(x, 0) + "%" });
-  const age = (h) => (h < 1 ? `${Math.round(h * 60)} min` : h < 48 ? `${Math.round(h)}h` : `${Math.round(h / 24)}d`);
-  table("m-movers", [["Token"], ["Idade", "num"], ["Market cap", "num"], ["5 min", "num"], ["1h", "num"], ["24h", "num"],
-    ["Volume 1h", "num"], ["Traders 1h", "num"], ["Holders", "num"], ["Orgânico", "num"], ["Filtro do robô"]],
-    mv.now.map((t) => [[fomoLink(t.mint, `${t.symbol} (${t.name})`), "q"], [age(t.age_hours), "num"], [fmtCompact(t.mcap), "num"],
-      [chg(t.change_5m), "num"], [chg(t.change_1h), "num"], [chg(t.change_24h), "num"], [fmtCompact(t.volume_1h), "num"],
-      [String(t.traders_1h), "num"], [String(t.holders), "num"], [t.organic_score === null ? "—" : fmtNum(t.organic_score, 0), "num"],
-      [t.verdict ? label(t.verdict) : badge("passa", "good")]]),
-    "Ainda sem dados: aparece depois do próximo ciclo das memecoins (a cada 3 min).");
-  document.getElementById("m-movers-updated").textContent = mv.updated ? `atualizado em ${fmtTime(mv.updated)}` : "";
-  table("m-peaks", [["Token"], ["Maior alta em 1h", "num"], ["Quando", ""], ["Market cap no pico", "num"], ["Market cap agora", "num"],
-    ["Desde o pico", "num"], ["Visto por último"]],
-    mv.day.map((p) => [[fomoLink(p.mint, p.symbol)], [chg(p.peak_change_1h), "num"], [fmtTime(p.peak_at)], [fmtCompact(p.peak_mcap), "num"],
-      [fmtCompact(p.mcap_now), "num"], [p.peak_mcap > 0 ? chg((p.mcap_now / p.peak_mcap - 1) * 100) : "—", "num"], [fmtTime(p.last_seen)]]),
-    "Nenhuma movimentação registrada nas últimas 24h ainda.");
-  const waiting = (r) => [[r.open, "abertas (<24h)"], [r.pending, "na fila"], [r.no_data, "sem dados"], [r.errors, "com erro"]]
-    .filter(([n]) => n).map(([n, t]) => `${n} ${t}`).join(", ");
-  const ret = (x) => el("span", { class: signClass(x), text: x === null ? "—" : (x > 0 ? "+" : "") + fmtPct(x) });
-  table("m-review", [["Decisão"], ["Casos", "num"], ["Média", "num"], ["Ganhou", "num"], ["Pior", "num"], ["Melhor", "num"], ["Ainda sem resultado"]],
-    (m.review || []).map((r) => [[label(r.decision)], [String(r.count), "num"], [ret(r.average), "num"], [`${r.wins}/${r.count}`, "num"],
-      [ret(r.worst), "num"], [ret(r.best), "num"], [waiting(r), "q"]]),
-    "Nenhum token checado a fundo ainda.");
-  document.getElementById("m-journal").textContent = m.journal_tail.join("\n") || "(vazio: o diário recebe compras, vendas e o post-mortem)";
 }
 
+// --- EM ALTA -------------------------------------------------------------------------------------------------------
+const MOVER_FILTERS = [["all", "Todos", () => true], ["up", "Subindo", (t) => t.change_1h > 0], ["down", "Caindo", (t) => t.change_1h < 0],
+  ["pass", "Passam no filtro do robô", (t) => !t.verdict]];
+function renderMovers(m) {
+  const mv = (m && m.movers) || { now: [], day: [], updated: null };
+  document.getElementById("mv-updated").textContent = mv.updated ? `atualizado às ${fmtClock(mv.updated)}` : "";
+  const seg = ui.seg.movers;
+  const chips = document.getElementById("mv-chips");
+  chips.hidden = seg !== "now";
+  chips.replaceChildren(...MOVER_FILTERS.map(([key, text, test]) => el("button", { type: "button", class: "chip", "aria-pressed": String(ui.moverFilter === key),
+    onclick: () => { ui.moverFilter = key; remember(); renderAll(); } }, [text, el("span", { class: "n", text: String(mv.now.filter(test).length) })])));
+  if (seg === "now") {
+    const test = (MOVER_FILTERS.find(([k]) => k === ui.moverFilter) || MOVER_FILTERS[0])[2];
+    fill("mv-table", dataTable("mv-now", [
+      { key: "token", label: "Token", value: (t) => t.symbol, cell: (t) => [fomoLink(t.mint, t.symbol), el("span", { class: "muted", text: " " + t.name })], cls: "wide" },
+      { key: "age", label: "Idade", num: true, value: (t) => t.age_hours, cell: (t) => fmtAge(t.age_hours) },
+      { key: "mcap", label: "Market cap", num: true, value: (t) => t.mcap, cell: (t) => fmtCompact(t.mcap) },
+      { key: "c1h", label: "1h", num: true, value: (t) => t.change_1h, cell: (t) => chg(t.change_1h) },
+      { key: "c24", label: "24h", num: true, value: (t) => t.change_24h, cell: (t) => chg(t.change_24h) },
+      { key: "vol", label: "Volume 1h", num: true, value: (t) => t.volume_1h, cell: (t) => fmtCompact(t.volume_1h) },
+      { key: "verdict", label: "Filtro do robô", value: (t) => (t.verdict ? (LABELS[t.verdict] || [t.verdict])[0] : ""),
+        cell: (t) => (t.verdict ? label(t.verdict) : pill("passa", "good")) },
+    ], mv.now, { search: "movers", text: (t) => `${t.symbol} ${t.name} ${t.mint}`, filter: test, key: (t) => t.mint,
+      empty: mv.now.length ? "Nenhum token neste filtro agora." : "Ainda sem dados: aparece depois do próximo ciclo das memecoins (a cada 3 min).",
+      detail: (t) => el("div", {}, [kv([["5 min", chg(t.change_5m)], ["Preço", "$" + Number(t.price).toPrecision(4)], ["Liquidez", fmtCompact(t.liquidity)],
+        ["Traders na última hora", int.format(t.traders_1h)], ["Holders", int.format(t.holders)],
+        ["Organic score (Jupiter)", isNum(t.organic_score) ? fmtNum(t.organic_score, 0) + " de 100" : "—"]]),
+        el("div", { class: "detail-text" }, [fomoLink(t.mint, "abrir no fomo"), " · ",
+          link("https://dexscreener.com/solana/" + encodeURIComponent(t.mint), "abrir no DexScreener")])]) }));
+  } else {
+    fill("mv-table", dataTable("mv-day", [
+      { key: "token", label: "Token", value: (p) => p.symbol, cell: (p) => fomoLink(p.mint, p.symbol) },
+      { key: "peak", label: "Maior alta em 1h", num: true, value: (p) => p.peak_change_1h, cell: (p) => chg(p.peak_change_1h) },
+      { key: "at", label: "Quando", desc: true, value: (p) => p.peak_at, cell: (p) => fmtTime(p.peak_at) },
+      { key: "pmc", label: "Market cap no pico", num: true, value: (p) => p.peak_mcap, cell: (p) => fmtCompact(p.peak_mcap) },
+      { key: "now", label: "Market cap agora", num: true, value: (p) => p.mcap_now, cell: (p) => fmtCompact(p.mcap_now) },
+      { key: "since", label: "Desde o pico", num: true, value: (p) => (p.peak_mcap > 0 ? p.mcap_now / p.peak_mcap - 1 : null),
+        cell: (p) => (p.peak_mcap > 0 ? chg((p.mcap_now / p.peak_mcap - 1) * 100) : "—") },
+    ], mv.day, { search: "movers", text: (p) => `${p.symbol} ${p.mint}`, key: (p) => p.mint, empty: "Nenhuma movimentação registrada nas últimas 24h ainda.",
+      detail: (p) => kv([["Volume na hora do pico", fmtCompact(p.peak_volume_1h)], ["Visto por último", fmtTime(p.last_seen)],
+        ["Links", el("span", {}, [fomoLink(p.mint, "fomo"), " · ", link("https://dexscreener.com/solana/" + encodeURIComponent(p.mint), "DexScreener")])]]) }));
+  }
+}
+
+// --- POLYMARKET ----------------------------------------------------------------------------------------------------
+const POLY_SEGS = [["decisions", "Decisões"], ["positions", "Posições"], ["trades", "Trades"], ["cycles", "Ciclos"], ["journal", "Diário"], ["log", "Log técnico"]];
+function renderPoly(s) {
+  const e = s.economics;
+  const [schedText, schedKind] = schedulerText(s.scheduler);
+  fill("p-pills", pill(s.mode === "live" ? "dinheiro real" : "simulação", s.mode === "live" ? "bad" : ""),
+    pill(s.halted ? "desligado" : "ligado", s.halted ? "bad" : "good", true), pill(schedText, schedKind),
+    el("span", { class: "muted", text: "só paper: o Brasil está bloqueado para ordens reais" }));
+  fill("p-alerts", ...alertNodes(polyAlerts(s)));
+  fill("p-tiles",
+    tile("Saldo", fmtUsd(e.equity), [signed(e.net), ` desde ${fmtUsd(e.bankroll_start)}`]),
+    tile("Fôlego", isNum(e.runway_days) ? `${Math.round(e.runway_days)} dias` : "—", `até ser desligado se não lucrar (linha ${fmtUsd(e.shutdown_line)})`,
+      isNum(e.runway_days) && e.runway_days < 14 ? "neg" : ""),
+    tile("Posições abertas", `${s.positions.length} de ${s.max_positions}`, `caixa livre ${fmtUsd(s.cash)}`),
+    tile("Trades fechados", String(s.closed.count), s.closed.count ? [`${s.closed.wins} com lucro · `, signed(s.closed.pnl)] : "nenhum ainda"));
+  fill("p-facts", ...facts([["ganho operando", fmtSigned(e.trading_pnl)], ["custo para existir", `${fmtUsd(e.costs_total)} (24h ${fmtUsd(e.costs_24h)} de ${fmtUsd(e.budget_24h)})`],
+    ["queda do pico", `${fmtPct(s.drawdown, 1)} · desliga em ${fmtPct(s.drawdown_halt)}`], ["análises hoje", `${s.analyst_calls_24h}/${s.analyst_cap}`],
+    ["último ciclo", ago(s.last_cycle_minutes_ago)]]));
+  document.getElementById("p-chart-sub").textContent = "últimos 30 dias";
+  lineChart("p-chart", s.equity_curve, [
+    { value: e.bankroll_start, label: "banca inicial", color: "--muted" },
+    { value: e.shutdown_line, label: "desliga aqui", color: "--critical" }]);
+
+  const seg = ui.seg.poly;
+  document.querySelector('[data-search="poly"]').hidden = !["decisions", "positions", "trades"].includes(seg);
+  if (seg === "decisions") {
+    fill("p-detail", dataTable("p-decisions", [
+      { key: "ts", label: "Quando", desc: true, value: (d) => d.ts, cell: (d) => fmtTime(d.ts) },
+      { key: "q", label: "Mercado", value: (d) => d.question, cell: (d) => marketLink(d.question, d.slug), cls: "wide" },
+      { key: "edge", label: "Vantagem", num: true, value: (d) => d.edge_pp, cell: (d) => `${fmtNum(d.edge_pp, 1)} pp` },
+      { key: "decision", label: "Decisão", value: (d) => (LABELS[d.decision] || [d.decision])[0], cell: (d) => label(d.decision) },
+    ], s.decisions, { search: "poly", text: (d) => d.question || "", key: (d) => d.ts + d.market_id + d.decision,
+      empty: "Nenhuma decisão registrada ainda: aqui aparecem os mercados que o Claude analisou.",
+      detail: (d) => el("div", {}, [kv([["Preço", fmtPct(d.price)], ["Justo (Claude)", fmtPct(d.fair_prob)], ["Confiança", CONFIDENCE[d.confidence] || d.confidence || "—"]]),
+        d.detail ? el("div", { class: "detail-text", text: d.detail }) : null]) }));
+  } else if (seg === "positions") {
+    fill("p-detail", dataTable("p-positions", [
+      { key: "q", label: "Mercado", value: (p) => p.question, cell: (p) => marketLink(p.question, p.slug), cls: "wide" },
+      { key: "side", label: "Lado", value: (p) => p.outcome, cell: (p) => p.outcome },
+      { key: "cost", label: "Custo", num: true, value: (p) => p.cost, cell: (p) => fmtUsd(p.cost) },
+      { key: "deadline", label: "Sair até", value: (p) => p.deadline, cell: (p) => fmtTime(p.deadline) },
+    ], s.positions, { search: "poly", text: (p) => p.question || "", key: (p) => p.question + p.outcome, empty: "Nenhuma posição aberta.",
+      detail: (p) => el("div", {}, [kv([["Cotas", fmtNum(p.shares)], ["Entrada", fmtPct(p.avg_price, 1)], ["Justo na entrada", fmtPct(p.entry_fair_prob)],
+        ["Aberta em", fmtTime(p.opened_at)]]), el("div", { class: "detail-text", text: "Condição de saída: " + (p.exit_condition || "—") })]) }));
+  } else if (seg === "trades") {
+    fill("p-detail", dataTable("p-trades", [
+      { key: "ts", label: "Quando", desc: true, value: (t) => t.ts, cell: (t) => fmtTime(t.ts) },
+      { key: "q", label: "Mercado", value: (t) => t.question, cell: (t) => t.question, cls: "wide" },
+      { key: "action", label: "Ação", value: (t) => t.action, cell: (t) => ACTIONS[t.action] || t.action },
+      { key: "cash", label: "Caixa", num: true, value: (t) => t.cash_delta, cell: (t) => signed(t.cash_delta) },
+    ], s.trades, { search: "poly", text: (t) => t.question || "", key: (t) => t.ts + t.question + t.action, empty: "Nenhum trade ainda.",
+      detail: (t) => kv([["Cotas", fmtNum(t.shares)], ["Preço", fmtPct(t.price, 1)], ["Taxa", fmtUsd(t.fee)], ["Motivo", LABELS[t.reason] ? label(t.reason) : t.reason]]) }));
+  } else if (seg === "cycles") {
+    fill("p-detail", dataTable("p-cycles", [
+      { key: "ts", label: "Quando", desc: true, value: (c) => c.ts, cell: (c) => fmtTime(c.ts) },
+      { key: "scanned", label: "Varridos", num: true, value: (c) => c.scanned ?? 0, cell: (c) => String(c.scanned ?? 0) },
+      { key: "analyzed", label: "Analisados", num: true, value: (c) => c.analyzed ?? 0, cell: (c) => String(c.analyzed ?? 0) },
+      { key: "entries", label: "Entradas", num: true, value: (c) => c.entries ?? 0, cell: (c) => String(c.entries ?? 0) },
+      { key: "exits", label: "Saídas", num: true, value: (c) => c.exits ?? 0, cell: (c) => String(c.exits ?? 0) },
+      { key: "errors", label: "Erros", num: true, value: (c) => (c.errors || []).length, cell: (c) => String((c.errors || []).length) },
+    ], s.cycles, { key: (c) => c.ts, empty: "Nenhum ciclo ainda.",
+      detail: (c) => el("div", {}, [kv([["Equity", fmtUsd(c.equity)], ["Candidatos", String(c.candidates ?? 0)], ["Liquidados", String(c.settled ?? 0)]]),
+        Object.keys(c.skips || {}).length ? el("div", { class: "chips", style: "margin-top:10px" }, Object.entries(c.skips).map(([k, n]) => { const b = label(k); b.append(el("span", { class: "n", text: `× ${n}` })); return b; })) : null,
+        (c.errors || []).length ? el("pre", { style: "margin-top:10px", text: c.errors.join("\n") }) : null]) }));
+  } else if (seg === "journal") {
+    fill("p-detail", el("pre", { text: s.journal_tail.join("\n") || "(vazio: o diário recebe entradas, saídas e relatórios)" }));
+  } else {
+    fill("p-detail", el("pre", { text: s.log_tail.join("\n") || "(vazio)" }));
+  }
+}
+
+// --- controls, tabs and refresh ------------------------------------------------------------------------------------
+function mountSeg(name, options) {
+  const host = document.querySelector(`.seg[data-seg="${name}"]`);
+  host.replaceChildren(...options.map(([key, text]) => el("button", { type: "button", "data-key": key,
+    onclick: () => { ui.seg[name] = key; remember(); renderAll(); } }, text)));
+}
+function syncControls() {
+  for (const host of document.querySelectorAll(".seg")) {
+    for (const b of host.children) b.setAttribute("aria-pressed", String(ui.seg[host.dataset.seg] === b.dataset.key));
+  }
+  for (const b of document.querySelectorAll(".tabs button")) b.setAttribute("aria-selected", String(b.dataset.tab === ui.tab));
+  for (const p of document.querySelectorAll(".tabpanel")) { p.hidden = p.id !== "tab-" + ui.tab; if (!p.hidden) p.style.display = "grid"; }
+}
+const TAB_IDS = ["resumo", "memes", "emalta", "poly"];
+function setTab(tab, push = true) {
+  ui.tab = TAB_IDS.includes(tab) ? tab : "resumo";
+  if (push && location.hash !== "#" + ui.tab) history.replaceState(null, "", "#" + ui.tab);
+  renderAll();
+  window.scrollTo({ top: 0 });
+}
+
+function renderAll() {
+  syncControls();
+  if (!state) return;
+  renderResumo(state);
+  renderMemes(state.memes);
+  renderMovers(state.memes);
+  renderPoly(state);
+}
+
+let timer = null;
 async function refresh() {
-  const updated = document.getElementById("updated");
+  const updated = document.getElementById("updated"), main = document.getElementById("main");
+  main.classList.add("stale");
   try {
     const resp = await fetch("/api/state", { cache: "no-store" });
     const data = await resp.json();
     if (!resp.ok || data.error) throw new Error(data.error || resp.status);
-    render(data);
-    updated.textContent = "atualizado às " + new Date().toLocaleTimeString("pt-BR");
+    state = data;
+    renderAll();
+    updated.textContent = "atualizado às " + new Date().toLocaleTimeString("pt-BR", { timeStyle: "short" });
   } catch (err) {
     updated.textContent = "falha ao atualizar: " + err.message;
+  } finally {
+    main.classList.remove("stale");
   }
 }
+function schedule() {
+  clearInterval(timer);
+  if (ui.live) timer = setInterval(refresh, REFRESH_MS);
+}
+
+mountSeg("memes", MEMES_SEGS);
+mountSeg("movers", [["now", "Agora"], ["day", "Picos de 24h"]]);
+mountSeg("poly", POLY_SEGS);
+for (const b of document.querySelectorAll(".tabs button")) b.addEventListener("click", () => setTab(b.dataset.tab));
+for (const card of document.querySelectorAll("[data-goto]")) {
+  const go = () => setTab(card.dataset.goto);
+  card.addEventListener("click", (e) => { if (!e.target.closest("a")) go(); });
+  card.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+}
+for (const input of document.querySelectorAll("input[data-search]")) {
+  input.addEventListener("input", () => { ui.search[input.dataset.search] = input.value; renderAll(); });
+}
+const live = document.getElementById("live");
+live.checked = ui.live;
+live.addEventListener("change", () => { ui.live = live.checked; remember(); schedule(); if (ui.live) refresh(); });
 document.getElementById("refresh").addEventListener("click", refresh);
+window.addEventListener("hashchange", () => setTab(location.hash.slice(1), false));
+setTab(location.hash.slice(1) || "resumo", false);
 refresh();
-setInterval(refresh, REFRESH_MS);
+schedule();
 </script>
 </body>
 </html>
