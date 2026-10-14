@@ -32,6 +32,8 @@ SELL_SOL_RESERVE = 0.01  # below this, sells may not pay their own fees (buys ne
 GAP_ALERT_MINUTES = 15  # longer than this without any run means the PC slept or was off
 UNCERTAIN_SELL = "uncertain_sell:"  # meta key prefix of sells whose answer was lost, by position id
 DEAD_VETTER_ALERT_CYCLES = 3
+X_MISSING = "x_missing:"  # meta key prefix, by position id: when the token's X link was first found missing
+X_GONE_MINUTES = 5  # it must stay missing on every check this long before it counts as deleted
 EXIT_LABELS = {
     "stop_loss": "stop-loss", "take_profit": "realização de lucro", "trailing_stop": "stop móvel",
     "max_hold": "tempo máximo", "liquidity_drained": "liquidez sumindo",
@@ -490,6 +492,8 @@ class _MemeCycle:
                 self.sell(pos, *decision)
 
     def x_link_gone(self, pos: MemePosition) -> bool:
+        """FxTwitter misfires "not found" for live accounts: only a link missing on every check for X_GONE_MINUTES
+        counts as deleted. Any check that sees it again restarts the count."""
         if not self.s.x_enabled or self.d.x is None or not pos.x_url:
             return False
         try:
@@ -497,7 +501,17 @@ class _MemeCycle:
         except XUnavailable as exc:
             self.error(f"X indisponível para {pos.symbol}: {exc}")
             return False  # an outage is never a reason to sell
-        return x.kind is not None and not x.found
+        key = X_MISSING + str(pos.id)
+        since = self.store.get_meta(key)
+        if x.kind is None or x.found:
+            if since is not None:
+                self.store.delete_meta(key)
+            return False
+        if since is None:
+            self.store.set_meta(key, self.now.isoformat())
+            log.info("memes: link do X de %s não encontrado; vende se continuar assim por %d min", pos.symbol, X_GONE_MINUTES)
+            return False
+        return self.now - datetime.fromisoformat(since) >= timedelta(minutes=X_GONE_MINUTES)
 
     def sell(self, pos: MemePosition, reason: str, fraction: float) -> None:
         try:

@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import math
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from typing import Protocol
+from typing import Callable, Protocol
 from urllib.parse import urlparse
 
 import httpx
@@ -128,11 +129,26 @@ def _verified(user: dict) -> bool:
 class FxTwitter:
     """Public, keyless JSON API behind fxtwitter.com embeds. Free, unofficial: it may change or go away."""
 
-    def __init__(self, http: httpx.Client, base_url: str = FX_URL):
+    def __init__(self, http: httpx.Client, base_url: str = FX_URL, *, tries: int = 3, pause: float = 1.0,
+                 sleep: Callable[[float], None] = time.sleep):
         self._http = http
         self._base = base_url.rstrip("/")
+        self._tries = tries
+        self._pause = pause
+        self._sleep = sleep
 
     def _get(self, path: str) -> dict | None:
+        """FxTwitter sometimes answers "not found" for accounts that exist (seen 2026-10-13: about 1 call in 3), so
+        a link is only reported gone when `tries` answers in a row say so."""
+        for attempt in range(self._tries):
+            if attempt:
+                self._sleep(self._pause)
+            data = self._get_once(path)
+            if data is not None:
+                return data
+        return None
+
+    def _get_once(self, path: str) -> dict | None:
         try:
             resp = self._http.get(self._base + path)
         except httpx.HTTPError as exc:

@@ -7,7 +7,7 @@ from desk.analyst.base import AnalystError
 from desk.config import MemesSettings
 from desk.executor.base import ExecutionError, ExecutionUncertain
 from desk.journal import Journal
-from desk.memes.cycle import MemeDeps, run_meme_cycle, run_meme_exits
+from desk.memes.cycle import X_GONE_MINUTES, MemeDeps, run_meme_cycle, run_meme_exits
 from desk.memes.executor import PaperMemeExecutor, PriceMoved
 from desk.memes.models import MemeFill
 from desk.memes.store import MemeStore
@@ -508,14 +508,25 @@ def test_buy_remembers_the_x_link(tmp_path, store):
     assert store.open_positions()[0].x_url == STATUS
 
 
-def test_deleted_x_post_after_buying_sells_everything(tmp_path, store):
+def test_deleted_x_post_after_buying_sells_everything_once_it_stays_gone(tmp_path, store):
     held_with_x(store)
     notifier = CapturingNotifier()
     dex = FakeDex({MINT: make_pair(price_usd=0.0016, liquidity_usd=100_000.0)}, discovered=[])
-    report = run_meme_cycle(deps(tmp_path, store, dex=dex, x=FakeX(post=None), notifier=notifier,
-                                 jup=FakeJupiter(prices={MINT: 0.0016})))
-    assert report.exits == 1 and store.closed_positions()[0].close_reason == "x_link_dead"
+    run = lambda now: run_meme_cycle(deps(tmp_path, store, dex=dex, x=FakeX(post=None), notifier=notifier,  # noqa: E731
+                                          jup=FakeJupiter(prices={MINT: 0.0016}), now=now))
+    assert run(NOW).exits == 0 and len(store.open_positions()) == 1  # one miss is not proof: FxTwitter misfires
+    assert run(NOW + timedelta(minutes=X_GONE_MINUTES)).exits == 1
+    assert store.closed_positions()[0].close_reason == "x_link_dead"
     assert any("apagado" in m for m in notifier.sent)
+
+
+def test_an_x_link_seen_again_restarts_the_count(tmp_path, store):
+    held_with_x(store)
+    dex = FakeDex({MINT: make_pair(price_usd=0.0016, liquidity_usd=100_000.0)}, discovered=[])
+    for minutes, x in ((0, FakeX(post=None)), (3, FakeX(post=make_post())), (X_GONE_MINUTES, FakeX(post=None))):
+        report = run_meme_cycle(deps(tmp_path, store, dex=dex, x=x, now=NOW + timedelta(minutes=minutes)))
+        assert report.exits == 0
+    assert len(store.open_positions()) == 1
 
 
 def test_x_outage_never_sells_a_held_token(tmp_path, store):

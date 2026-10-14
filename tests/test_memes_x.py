@@ -76,10 +76,27 @@ def test_deleted_or_unknown_is_none_but_an_outage_raises():
     respx.get(f"{FX}/x/status/9").mock(return_value=httpx.Response(200, json={"code": 404, "message": "NOT_FOUND"}))
     respx.get(f"{FX}/busy").mock(return_value=httpx.Response(503))
     with httpx.Client() as http:
-        fx = FxTwitter(http)
+        fx = FxTwitter(http, sleep=lambda s: None)
         assert fx.profile("gone") is None and fx.post("elonmusk", "1") is None and fx.post("x", "9") is None
         with pytest.raises(XUnavailable):
             fx.profile("busy")
+
+
+@respx.mock
+def test_not_found_is_only_believed_after_three_answers_in_a_row():
+    # Seen 2026-10-13: FxTwitter answered "User not found" for live accounts in about 1 call of 3.
+    flaky = respx.get(f"{FX}/CealOnSol").mock(side_effect=[
+        httpx.Response(404, json={"code": 404, "message": "User not found"}),
+        httpx.Response(404, json={"code": 404, "message": "User not found"}),
+        httpx.Response(200, json=fx_user()),
+    ])
+    gone = respx.get(f"{FX}/gone").mock(return_value=httpx.Response(404, json={"code": 404, "message": "User not found"}))
+    slept = []
+    with httpx.Client() as http:
+        fx = FxTwitter(http, sleep=slept.append)
+        assert fx.profile("CealOnSol").followers == 1
+        assert fx.profile("gone") is None
+    assert flaky.call_count == 3 and gone.call_count == 3 and slept == [1.0, 1.0, 1.0, 1.0]
 
 
 def test_signal_from_a_status_link_reads_the_post():
