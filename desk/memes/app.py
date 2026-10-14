@@ -21,6 +21,7 @@ from desk.memes.cycle import PENDING_BUY, MemeDeps, run_meme_cycle, run_meme_exi
 from desk.memes.executor import LiveMemeExecutor, MemeExecutor, PaperMemeExecutor, load_wallet, raw_usdc, usdc_raw
 from desk.memes.models import SOL_MINT, USDC_MINT
 from desk.memes.readiness import readiness
+from desk.memes.review import PriceHistory, format_report, make_gecko, review
 from desk.memes.sources import FETCH_ERRORS, DexScreener, Jupiter, JupiterApi, JupiterTokens, RugCheck, SolanaRpc
 from desk.memes.store import MemeStore
 from desk.memes.vetter import MemeVetter
@@ -325,8 +326,20 @@ def _verdict(ok: bool) -> int:
     return 0 if ok else 1
 
 
+def cmd_memes_review(app: MemesApp, max_fetch: int = 100, prices: PriceHistory | None = None) -> int:
+    """Would each filter's rejections have lost money? Replays the exit rules on GeckoTerminal's 1-minute candles."""
+    def progress(i: int, total: int, symbol: str) -> None:
+        print(f"  buscando preços {i}/{total}: {symbol}", flush=True)
+
+    outcomes = review(app.store.all_decisions(), prices or make_gecko(app.http),
+                      app.settings.state_dir / "memes-review.json", app.settings.memes, utcnow(),
+                      max_fetch=max_fetch, progress=progress)
+    print(format_report(outcomes, app.store.closed_positions(), app.settings.memes))
+    return 0
+
+
 def run_command(command: str, app: MemesApp, **options) -> int:
     handlers = {"memes": "cmd_memes_cycle", "memes-exits": "cmd_memes_exits", "memes-status": "cmd_memes_status",
                 "memes-resume": "cmd_memes_resume", "memes-live-check": "cmd_memes_live_check",
-                "memes-sell-all": "cmd_memes_sell_all"}
+                "memes-sell-all": "cmd_memes_sell_all", "memes-review": "cmd_memes_review"}
     return globals()[handlers[command]](app, **options)

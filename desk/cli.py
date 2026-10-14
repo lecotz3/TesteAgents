@@ -340,6 +340,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("memes-live-check", help="verifica se o modo real das memecoins está pronto (não negocia)")
     sell_all = sub.add_parser("memes-sell-all", help="emergência: vende todas as memecoins agora e pausa as compras")
     sell_all.add_argument("--yes", action="store_true", help="confirma a venda geral")
+    review = sub.add_parser("memes-review", help="memecoins: cada filtro evitou perdedores? (simula 24h após cada decisão)")
+    review.add_argument("--max", type=int, default=100, help="janelas novas buscadas nesta rodada (~6 s cada)")
     sub.add_parser("telegram-setup", help="confere o token do bot, acha sua conversa e manda um teste")
     args = parser.parse_args(argv)
 
@@ -351,6 +353,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "memes-sell-all":
         return run_memes_command(args.command, args.config, args.env_file, yes=args.yes)
+    if args.command == "memes-review":
+        return run_memes_command(args.command, args.config, args.env_file, max_fetch=args.max)
     if args.command.startswith("memes"):
         return run_memes_command(args.command, args.config, args.env_file)
 

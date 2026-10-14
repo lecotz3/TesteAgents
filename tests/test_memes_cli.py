@@ -384,3 +384,26 @@ def test_status_says_why_buying_is_paused(app, capsys):
     app.store.set_meta("halt_reason", "manual")
     memes_app.cmd_memes_status(app)
     assert "Parado: SIM (venda geral pedida por você)" in capsys.readouterr().out
+
+
+def test_review_reports_each_decision_and_keeps_finished_windows(app, capsys):
+    from datetime import datetime, timedelta, timezone
+
+    from tests.test_memes_review import FakeGecko, series
+
+    then = datetime.now(timezone.utc).replace(second=0, microsecond=0) - timedelta(hours=30)
+    seen = {"mint": "MiNt", "symbol": "VEIL", "price_usd": 1.0, "liquidity_usd": 90_000.0, "market_cap_usd": 1e6}
+    app.store.record_cycle(then, {}, [{**seen, "decision": "vetter_avoid", "detail": "golpe"},
+                                      {**seen, "mint": "OtHeR", "symbol": "PUMP", "decision": "vet_error"}])
+    prices = FakeGecko(pools={"MiNt": "pool"}, closes={"pool": series(1.0, 0.6, start=then)})
+    assert memes_app.cmd_memes_review(app, prices=prices) == 0
+    out = capsys.readouterr().out
+    assert "Claude vetou" in out and "-42%" in out and "PUMP" not in out
+    assert (app.settings.state_dir / "memes-review.json").exists()
+
+
+def test_review_is_a_cli_command(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(cli, "run_memes_command", lambda command, *a, **kw: seen.update(command=command, **kw) or 0)
+    assert cli.main(["memes-review", "--max", "7"]) == 0
+    assert seen == {"command": "memes-review", "max_fetch": 7}

@@ -128,6 +128,10 @@ class MemeStore(Ledger):
             for r in self._db.execute(sql, params).fetchall()
         ]
 
+    def all_decisions(self) -> list[dict]:
+        rows = self._db.execute("SELECT * FROM decisions ORDER BY id").fetchall()
+        return [{**{k: r[k] for k in self.DECISION_FIELDS}, "ts": _dt(r["ts"])} for r in rows]
+
     # --- vetter verdicts ----------------------------------------------------
     def save_vet(self, mint: str, ts: datetime, verdict: str, payload: dict) -> None:
         with self._db:

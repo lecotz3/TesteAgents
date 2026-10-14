@@ -146,16 +146,16 @@ class DexScreener:
         return best
 
 
-class JupiterApi:
-    """Every Jupiter call goes through here: one base URL, the optional key, spacing for the per-IP limit, 429 retries."""
+class PacedApi:
+    """A free API with a per-IP limit: one base URL, fixed headers, spacing between calls and 429 retries."""
 
-    def __init__(self, http: httpx.Client, base_url: str = JUP_URL, api_key: str | None = None, *,
-                 min_interval: float | None = None, retries: int = 2,
+    def __init__(self, http: httpx.Client, base_url: str, *, headers: dict[str, str] | None = None,
+                 min_interval: float = 2.1, retries: int = 2,
                  clock: Callable[[], float] = time.monotonic, sleep: Callable[[float], None] = time.sleep):
         self._http = http
         self._base = base_url.rstrip("/")
-        self._headers = {"x-api-key": api_key} if api_key else {}
-        self.min_interval = (1.1 if api_key else 2.1) if min_interval is None else min_interval
+        self._headers = headers or {}
+        self.min_interval = min_interval
         self._retries = retries
         self._clock = clock
         self._sleep = sleep
@@ -184,6 +184,17 @@ class JupiterApi:
 
     def post(self, path: str, **kwargs) -> httpx.Response:
         return self.request("POST", path, **kwargs)
+
+
+class JupiterApi(PacedApi):
+    """Every Jupiter call goes through here, so quotes, swaps and token lists share the per-IP limit."""
+
+    def __init__(self, http: httpx.Client, base_url: str = JUP_URL, api_key: str | None = None, *,
+                 min_interval: float | None = None, retries: int = 2,
+                 clock: Callable[[], float] = time.monotonic, sleep: Callable[[float], None] = time.sleep):
+        super().__init__(http, base_url, headers={"x-api-key": api_key} if api_key else None,
+                         min_interval=(1.1 if api_key else 2.1) if min_interval is None else min_interval,
+                         retries=retries, clock=clock, sleep=sleep)
 
 
 @dataclass(frozen=True)
