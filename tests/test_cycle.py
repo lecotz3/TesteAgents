@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from desk.analyst.base import AnalystError
-from desk.config import AnalysisSettings, EconomySettings, Settings
+from desk.config import AnalysisSettings, EconomySettings, RiskSettings, Settings
 from desk.cycle import Deps, run_cycle
 from desk.executor.base import ExecutionUncertain
 from desk.executor.paper import PaperExecutor
@@ -478,3 +478,21 @@ def test_costs_alone_can_shut_the_desk_down(env):
     report = run_cycle(deps)
     assert report.halted
     assert any("DESLIGADO" in msg for msg in deps.notifier.sent)
+
+
+ZERO = Settings(risk=RiskSettings(drawdown_halt=1.0), economy=EconomySettings(daily_rent_usd=0.0, cost_per_analysis_usd=0.0))
+
+
+def test_with_the_cut_off_at_zero_a_big_loss_is_not_the_end(env):
+    tmp_path, store = env
+    store.adjust_cash(-70.0)  # 70% below the peak: switched off at the default 40%, alive when only zero counts
+    report = run_cycle(make_deps(tmp_path, store, [], {}, FakeAnalyst(), ZERO))
+    assert not report.halted and not store.is_halted()
+
+
+def test_with_the_cut_off_at_zero_it_is_switched_off_when_the_money_runs_out(env):
+    tmp_path, store = env
+    store.adjust_cash(-99.5)  # $0.50 left: not even the smallest order
+    deps = make_deps(tmp_path, store, [], {}, FakeAnalyst(), ZERO)
+    assert run_cycle(deps).halted and store.is_halted()
+    assert any("DESLIGADO" in s and "dinheiro acabou" in s for s in deps.notifier.sent)

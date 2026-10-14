@@ -65,7 +65,9 @@ def quote_rejection(*, round_trip_loss: float | None, price_impact_pct: float, s
 
 
 def position_size_usd(*, equity: float, cash: float, s: MemesSettings) -> float:
-    size = min(equity * s.position_pct, cash)
+    """position_pct of equity, but never under the minimum trade while there is cash for it: an agent that must make
+    money keeps trying until the money runs out instead of idling once 3% is less than $1."""
+    size = min(max(equity * s.position_pct, s.min_trade_usd), cash)
     return round(size, 2) if size >= s.min_trade_usd else 0.0
 
 

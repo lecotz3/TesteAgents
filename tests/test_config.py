@@ -18,7 +18,7 @@ def test_repo_config_uses_guide_values():
     assert s.risk.kelly_fraction == 0.5
     assert s.risk.max_position_pct == 0.06
     assert s.risk.max_open_positions == 5
-    assert s.risk.drawdown_halt == 0.40
+    assert s.risk.drawdown_halt == 1.0 and s.memes.drawdown_halt == 1.0  # the owner's choice: switched off only when broke
     assert s.exits.exit_fair_change_pp == 5.0
     assert s.exits.exit_hours_before_resolution == 1.0
     assert s.analysis.analyst == "claude"

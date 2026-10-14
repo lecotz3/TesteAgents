@@ -13,6 +13,7 @@ import httpx
 
 from desk.analyst.claude_cli import ClaudeCliAnalyst
 from desk.config import ConfigError, Secrets, Settings
+from desk.economy import shutdown_line
 from desk.executor import LIVE_CONFIRMATION
 from desk.executor.base import ExecutionError
 from desk.journal import Journal, format_note
@@ -194,7 +195,7 @@ def cmd_memes_status(app: MemesApp) -> int:
     halted = f"SIM{reasons.get(store.get_meta('halt_reason') or '', '')}" if store.is_halted() else "não"
     print(f"Memecoins | modo: {m.mode} ({kind}) | Claude: {m.analyst} | Parado: {halted}")
     print(f"Equity: ${equity:.2f} | Caixa: ${store.cash():.2f} | Pico: ${peak:.2f} | Queda: {drawdown:.1%} | "
-          f"Desliga em: ${peak * (1 - m.drawdown_halt):.2f}")
+          f"Desliga em: ${shutdown_line(peak, m.drawdown_halt):.2f}")
     print(f"Custos: ${store.total_costs():.2f} (24h: ${store.costs_since(now - timedelta(hours=24)):.2f}) | "
           f"Checagens do Claude 24h: {store.analyst_calls_since(now - timedelta(hours=24))}/{m.max_vets_per_day} | "
           f"Líquido: ${equity - m.bankroll_start_usd:+.2f}")

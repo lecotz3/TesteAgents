@@ -12,6 +12,7 @@ from typing import Callable, Protocol
 
 from desk.analyst.base import AnalystError
 from desk.config import MemesSettings
+from desk.economy import BROKE_USD, shutdown_line
 from desk.executor.base import ExecutionError, ExecutionUncertain
 from desk.journal import Journal, format_note
 from desk.memes.executor import MemeExecutor, PriceMoved, usdc_raw
@@ -296,7 +297,8 @@ class _MemeCycle:
         if self.store.is_halted():
             return
         peak, equity = self.store.peak(), self.report.equity
-        if peak <= 0 or (peak - equity) / peak < self.s.drawdown_halt:
+        line = shutdown_line(peak, self.s.drawdown_halt)
+        if peak <= 0 or equity > line:
             return
         drawdown = (peak - equity) / peak
         self.store.set_halted(True)
@@ -304,8 +306,9 @@ class _MemeCycle:
         self.d.journal.append(format_note(
             f"POST-MORTEM MEMECOINS: queda de {drawdown:.0%} desde o pico", self.trade_summary(), self.now
         ))
+        why = "o dinheiro acabou" if line <= BROKE_USD else f"a banca caiu {drawdown:.0%} desde o pico"
         self.d.notifier.send(
-            f"Agente de memecoins DESLIGADO: não se pagou. A banca caiu {drawdown:.0%} desde o pico "
+            f"Agente de memecoins DESLIGADO: não fez dinheiro, {why} "
             f"(pico ${peak:.2f}, equity ${equity:.2f}; custos ${self.store.total_costs():.2f}). Ele parou de comprar "
             "e de gastar, mas segue vendendo pelas regras de saída. Para religar: python -m desk memes-resume"
         )

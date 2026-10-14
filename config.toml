@@ -30,7 +30,7 @@ max_exit_slippage = 0.03
 kelly_fraction = 0.5
 max_position_pct = 0.06
 max_open_positions = 5
-drawdown_halt = 0.40
+drawdown_halt = 1.0            # 1.0 = DESLIGADO só quando o dinheiro acabar (menos de US$1); 0.40 = ao cair 40% do pico
 
 [exits]
 exit_edge_closed_pp = 1.0
@@ -39,7 +39,7 @@ exit_hours_before_resolution = 1.0
 reentry_cooldown_hours = 6.0   # depois de vender, não recompra o mesmo mercado por 6h (evita girar taxa)
 
 [economy]
-# O robô paga para existir: se não ganhar mais do que gasta, a banca cai até a linha de 40% e ele é DESLIGADO.
+# O robô paga para existir: se não ganhar mais do que gasta, o dinheiro acaba e ele é DESLIGADO.
 # daily_rent_usd = 0.67        # aluguel diário; comentado = subscription_cost_usd / 30 (assinatura rateada)
 cost_per_analysis_usd = 0.01   # cada chamada ao analista (cada "pensamento") sai do caixa
 max_daily_burn_pct = 0.015     # gasto máximo em 24h (aluguel + análises) como % da equity: com US$100, US$1,50/dia
@@ -61,7 +61,7 @@ cost_per_vet_usd = 0.01        # cada checagem do Claude sai do caixa (o agente 
 max_vets_per_day = 30          # sem checagem disponível ele não compra
 max_vets_per_cycle = 2         # cada checagem leva minutos; o resto fica para o próximo ciclo
 daily_rent_usd = 0.0           # o aluguel da assinatura já é pago pelo desk; suba se quiser cobrar dos dois
-drawdown_halt = 0.40           # caiu 40% do pico: DESLIGADO (para de comprar e de gastar; vendas continuam)
+drawdown_halt = 1.0            # o dinheiro acabou (menos de US$1): DESLIGADO. 0.40 = desliga ao cair 40% do pico
 daily_loss_pause_pct = 15      # perdeu 15% em 24h: pausa as compras (vendas continuam); 0 desliga
 
 # Filtros de mercado (DexScreener)

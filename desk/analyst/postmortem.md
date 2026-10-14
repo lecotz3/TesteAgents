@@ -1,4 +1,4 @@
-You are reviewing an automated prediction-market desk that just hit its drawdown stop (it lost 40% from its peak). Below is a summary of its trades.
+You are reviewing an automated prediction-market desk that was just switched off because it did not make money: trading losses plus its own running costs took its balance down to the shutdown line. Below is a summary of its trades.
 
 <<<TRADES
 $summary

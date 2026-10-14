@@ -49,7 +49,7 @@ class RiskSettings(BaseModel):
     kelly_fraction: float = Field(0.5, gt=0, le=1)
     max_position_pct: float = Field(0.06, gt=0, le=1)
     max_open_positions: int = Field(5, ge=1)
-    drawdown_halt: float = Field(0.40, gt=0, lt=1)
+    drawdown_halt: float = Field(0.40, gt=0, le=1)  # 1.0 = only when the money runs out (below economy.BROKE_USD)
 
 
 class ExitSettings(BaseModel):
@@ -136,7 +136,7 @@ class MemesSettings(BaseModel):
     max_vets_per_cycle: int = Field(2, ge=0)  # each check takes minutes; the next cycle's exits must not wait
     vet_block_hours: float = Field(24.0, ge=0)
     daily_rent_usd: float = Field(0.0, ge=0)
-    drawdown_halt: float = Field(0.40, gt=0, lt=1)
+    drawdown_halt: float = Field(0.40, gt=0, le=1)  # 1.0 = only when the money runs out (below economy.BROKE_USD)
     daily_loss_pause_pct: float = Field(15.0, ge=0, lt=100)  # lost this much in 24h: no new buys (0 = off)
     # what paper has to show before real money (docs/PENDENCIAS.md, D8)
     readiness_min_days: int = Field(14, ge=0)

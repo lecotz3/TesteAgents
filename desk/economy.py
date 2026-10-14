@@ -8,6 +8,14 @@ from datetime import datetime, timedelta
 from desk.config import Settings
 from desk.store import Store
 
+BROKE_USD = 1.0  # below this nothing can be traded any more: the money ran out
+
+
+def shutdown_line(peak: float, drawdown_halt: float) -> float:
+    """The equity at which an agent is switched off: drawdown_halt below its peak, and never under BROKE_USD
+    (drawdown_halt = 1.0 means it only stops when the money runs out)."""
+    return max(peak * (1 - drawdown_halt), BROKE_USD)
+
 
 @dataclass(frozen=True)
 class Economics:
@@ -26,13 +34,26 @@ class Economics:
         return asdict(self)
 
 
-def _runway_days(equity: float, line: float, daily_pct: float) -> float | None:
-    """Demand for analyses exceeds the budget, so it spends ~daily_pct of a shrinking equity each day."""
-    if equity <= line or line <= 0:
-        return 0.0 if equity <= line else None
+def _runway_days(equity: float, line: float, daily_pct: float, daily_rent: float = 0.0) -> float | None:
+    """Days to the line earning nothing. Demand for analyses exceeds the budget, so it spends ~daily_pct of a
+    shrinking equity each day, and never less than the fixed daily rent (which takes over once equity is small)."""
+    if equity <= line:
+        return 0.0
     if daily_pct >= 1:
         return 0.0
-    return math.log(line / equity) / math.log(1 - daily_pct)
+    knee = daily_rent / daily_pct if daily_pct > 0 else math.inf  # below this equity the rent is the bigger cost
+    days = 0.0
+    stop = max(line, knee)
+    if equity > stop:
+        if stop <= 0:
+            return None  # a share of a shrinking equity never reaches zero
+        days = math.log(stop / equity) / math.log(1 - daily_pct)
+        equity = stop
+    if equity > line:
+        if daily_rent <= 0:
+            return None
+        days += (equity - line) / daily_rent
+    return days
 
 
 def _cents(x: float) -> float:
@@ -44,13 +65,13 @@ def economics(store: Store, settings: Settings, now: datetime) -> Economics:
     equity = last if last is not None else store.cash()
     start = settings.bankroll_start_usd
     costs_total = store.total_costs()
-    shutdown_line = store.peak() * (1 - settings.risk.drawdown_halt)
+    line = shutdown_line(store.peak(), settings.risk.drawdown_halt)
     burn = store.costs_since(now - timedelta(days=7)) / 7
-    runway = _runway_days(equity, shutdown_line, settings.economy.max_daily_burn_pct)
+    runway = _runway_days(equity, line, settings.economy.max_daily_burn_pct, settings.daily_rent)
     return Economics(
         equity=equity, bankroll_start=start, costs_total=costs_total,
         costs_24h=store.costs_since(now - timedelta(hours=24)),
         trading_pnl=_cents(equity - start + costs_total), net=_cents(equity - start),
         budget_24h=settings.economy.max_daily_burn_pct * max(equity, 0.0),
-        shutdown_line=shutdown_line, burn_per_day=burn, runway_days=runway,
+        shutdown_line=line, burn_per_day=burn, runway_days=runway,
     )

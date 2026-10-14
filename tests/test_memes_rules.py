@@ -57,7 +57,8 @@ def test_quote_filters_catch_expensive_or_unsellable_tokens():
 def test_position_size_is_a_small_slice_of_equity_capped_by_cash():
     assert position_size_usd(equity=100.0, cash=100.0, s=S) == pytest.approx(3.0)
     assert position_size_usd(equity=100.0, cash=2.0, s=S) == pytest.approx(2.0)
-    assert position_size_usd(equity=10.0, cash=10.0, s=S) == 0.0  # below the $1 minimum trade
+    assert position_size_usd(equity=10.0, cash=10.0, s=S) == 1.0  # 3% is $0.30: it still makes the $1 minimum trade
+    assert position_size_usd(equity=10.0, cash=0.5, s=S) == 0.0  # the money ran out
 
 
 def price(p):  # position bought at 0.0015

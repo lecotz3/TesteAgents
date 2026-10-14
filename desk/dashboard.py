@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Callable
 
 from desk.config import Settings
-from desk.economy import economics
+from desk.economy import economics, shutdown_line
 from desk.memes.cycle import PENDING_BUY, UNCERTAIN_SELL
 from desk.memes.movers import day_peaks
 from desk.memes.readiness import readiness
@@ -117,7 +117,7 @@ def memes_snapshot(state_dir: Path, settings: Settings, now: datetime,
             "equity": equity, "cash": store.cash(), "peak": peak, "bankroll_start": m.bankroll_start_usd,
             "net": round(equity - m.bankroll_start_usd, 2) + 0.0,
             "drawdown": (peak - equity) / peak if peak > 0 else 0.0, "drawdown_halt": m.drawdown_halt,
-            "shutdown_line": peak * (1 - m.drawdown_halt),
+            "shutdown_line": shutdown_line(peak, m.drawdown_halt),
             "costs_total": store.total_costs(), "costs_24h": store.costs_since(now - timedelta(hours=24)),
             "max_positions": m.max_positions,
             "positions": [_meme_position(p) for p in positions],

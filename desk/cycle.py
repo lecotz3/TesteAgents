@@ -13,6 +13,7 @@ from desk.analyst.base import Analyst, AnalystError
 from desk.clob import simulate_sell
 from desk.config import Settings
 from desk.decide import PREFILTER_SLACK_PP, EntryPlan, Skip, evaluate_entry, quick_edge_pp
+from desk.economy import BROKE_USD, shutdown_line
 from desk.executor.base import ExecutionError, ExecutionUncertain, Executor
 from desk.exits import exit_reason, settlement_price
 from desk.journal import Journal, format_entry, format_exit, format_note
@@ -252,7 +253,8 @@ class _Cycle:
         if peak <= 0:
             return
         drawdown = (peak - equity) / peak
-        if drawdown < self.s.risk.drawdown_halt:
+        line = shutdown_line(peak, self.s.risk.drawdown_halt)
+        if equity > line:
             return
         self.store.set_halted(True)
         summary = self.trade_summary()
@@ -267,8 +269,9 @@ class _Cycle:
             f"{text}\n\nResumo dos trades:\n{summary}",
             self.now,
         ))
+        why = "o dinheiro acabou" if line <= BROKE_USD else f"a banca caiu {drawdown:.0%} desde o pico"
         self.d.notifier.send(
-            f"Desk DESLIGADO: não se pagou. A banca caiu {drawdown:.0%} desde o pico (pico ${peak:.2f}, "
+            f"Desk DESLIGADO: não fez dinheiro, {why} (pico ${peak:.2f}, "
             f"equity ${equity:.2f}; custos de operação até aqui ${self.store.total_costs():.2f}). "
             "Ele parou de operar e de gastar. Leia o post-mortem em trades.txt; para religar: python -m desk resume"
         )

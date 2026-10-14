@@ -47,7 +47,7 @@ As tarefas rodam só com sua sessão do Windows aberta (o `claude` usa seu login
 
 O painel fica em http://127.0.0.1:8765. O `install_task.ps1` o deixa sempre ligado: ele sobe sozinho quando você entra no Windows, sem janela, e é conferido a cada 5 minutos. Para abrir, use o atalho **"Painel dos robos"** na área de trabalho, o `scripts\dashboard.cmd` ou o endereço no navegador. Ele se atualiza a cada 30s (desligue em "ao vivo") e tem quatro abas:
 - **Resumo:** no topo, a regra: os robôs precisam fazer dinheiro, ou são desligados. Embaixo, um cartão por robô (saldo, variação, mini-gráfico, **barra de vida**, posições, último ciclo, se está pronto para dinheiro real), o top do Em alta e as últimas compras e vendas. Clique num cartão para abrir o robô.
-- **Barra de vida:** 100% no maior saldo que o robô já teve, 0% na linha de corte (40% abaixo dele). Ela fica amarela abaixo de 50% e vermelha abaixo de 25%. Em cada robô, o cartão "Precisa fazer dinheiro para continuar ligado" mostra quanto ele ainda pode perder, quanto ganhou operando, quanto gastou para existir e o resultado. Se chegar a 0%, o cartão fica vermelho: "DESLIGADO: não fez dinheiro".
+- **Barra de vida:** 100% no maior saldo que o robô já teve, 0% quando o dinheiro acaba (a linha de corte). Ela fica amarela abaixo de 50% e vermelha abaixo de 25%. Em cada robô, o cartão "Precisa fazer dinheiro para continuar ligado" mostra quanto ele ainda pode perder, quanto ganhou operando, quanto gastou para existir e o resultado. Se chegar a 0%, o cartão fica vermelho: "DESLIGADO: não fez dinheiro".
 - **Memecoins:** saldo, gráfico (passe o mouse para ver cada ponto, ou use as setas), posições e, numa caixa com sub-abas, os tokens checados, compras e vendas, "Os filtros acertam?", o último ciclo e o diário.
 - **Em alta:** as maiores movimentações da hora, com filtros (subindo, caindo, passam no filtro do robô), busca e os picos de 24h.
 - **Polymarket:** saldo, fôlego, gráfico e, em sub-abas, decisões, posições, trades, ciclos, diário e log.
@@ -72,7 +72,7 @@ Depois de 48h de registros limpos, confira uma vez por dia com `python -m desk s
 
 ## Parâmetros (`config.toml`)
 
-Os números do guia já vêm configurados: vantagem mínima de 8pp, ½ Kelly, máximo de 6% por trade, 5 posições, saída com no máximo 3% de slippage, liquidez ≥ US$5.000, ≥ 2h até a resolução, parada em 40% de drawdown.
+Os números do guia já vêm configurados: vantagem mínima de 8pp, ½ Kelly, máximo de 6% por trade, 5 posições, saída com no máximo 3% de slippage, liquidez ≥ US$5.000, ≥ 2h até a resolução. O guia parava em 40% de drawdown; aqui, por escolha sua, o robô só é desligado quando o dinheiro acaba (`drawdown_halt = 1.0`; volte para `0.40` se quiser a parada do guia).
 
 - `analyses_per_cycle` e `analysis_ttl_hours` controlam quanto da sua cota do Claude é usada.
 - `allow_categories` / `skip_categories` filtram por categoria (`weather`, `sports`, `politics`, `crypto`, `economics`, `other`…).
@@ -91,7 +91,7 @@ Os números do guia já vêm configurados: vantagem mínima de 8pp, ½ Kelly, m�
 
 ## Desligamento por drawdown (o "pivô")
 
-Ao cair 40% do pico, por perdas, por custos ou pelos dois, o robô é desligado: para de abrir posições, de analisar e de pagar aluguel (as saídas continuam), escreve um **post-mortem** no `trades.txt` com uma proposta de categoria mais previsível (o guia trocou cripto por clima) e te avisa. Leia, ajuste `allow_categories`/`skip_categories` se concordar, e rode:
+Quando o dinheiro acaba (menos de US$1), por perdas, por custos ou pelos dois, o robô é desligado: para de abrir posições, de analisar e de pagar aluguel (as saídas continuam), escreve um **post-mortem** no `trades.txt` com uma proposta de categoria mais previsível (o guia trocou cripto por clima) e te avisa. Leia, ajuste `allow_categories`/`skip_categories` se concordar, e rode:
 
 ```powershell
 .venv\Scripts\python -m desk resume
@@ -164,7 +164,7 @@ Ele roda em dois ritmos. A cada **3 minutos**, o ciclo completo descobre, filtra
   - `memes-live-check` pede à Jupiter uma troca real de US$1 para a sua carteira e a assina localmente **sem enviar**.
 - **Jupiter:** usa `api.jup.ag` (o antigo `lite-api` está sendo desligado). Sem chave: 1 chamada a cada 2 s, o que já basta. Uma chave grátis em developers.jup.ag/portal (`MEMES_JUPITER_API_KEY` no `.env`) dobra isso.
 - **Só alertas:** `auto_trade = false`. Ele manda os tokens aprovados no Telegram, com link do fomo.family, e você decide.
-- **Paga para existir:** cada checagem do Claude custa US$0,01. Caiu 40% do pico, é desligado: para de comprar e de gastar, mas segue vendendo pelas regras.
+- **Paga para existir:** cada checagem do Claude custa US$0,01. Se o dinheiro acabar, é desligado: para de comprar e de gastar, mas segue vendendo pelas regras. Para tentar até o fim, com pouco dinheiro ele compra no mínimo US$1 (o que pode ser bem mais que 3% do saldo).
 - **Freio diário:** perdeu 15% da banca em 24h, pausa as compras até a queda das últimas 24h voltar abaixo disso (`daily_loss_pause_pct`). As vendas continuam.
 - **Vender tudo agora:** `python -m desk memes-sell-all --yes` vende todas as posições a preço de mercado e pausa as compras até `memes-resume`. Sem o `--yes` ele só mostra o que venderia.
 - **Parar na hora:** `enabled = false` na seção `[memes]` do `config.toml` para tudo (compras e vendas) a partir do próximo minuto. Para parar só as compras e manter as saídas, use `auto_trade = false`.
@@ -177,5 +177,5 @@ Ele roda em dois ritmos. A cada **3 minutos**, o ciclo completo descobre, filtra
 - Comece com US$100–150 (menos que isso trava na ordem mínima). O robô precisa merecer operar mais.
 - 8pp mínimo, 6% por trade, 5 posições, ½ Kelly sempre.
 - Toda entrada tem condição de saída registrada antes.
-- 40% de drawdown = parar e fazer post-mortem. Sem exceção.
+- Dinheiro acabou = desligado, com post-mortem. Sem exceção.
 - Mercado de previsão não é permitido em todo lugar. Confira sua jurisdição.

@@ -4,12 +4,12 @@ This file carries the working context between computers (Claude's own memory sta
 
 ## What this is
 Two trading agents, adapted from the guide "How to Build a Self-Funding Grok Agent That Trades Polymarket", with Claude Code (`claude -p`, default) or Codex (`codex exec`) as the analyst:
-- **Polymarket desk** (`desk/`): scans markets every 10 min, the LLM only estimates probabilities, deterministic rules trade (8pp edge, ½ Kelly, 6% cap, 40% drawdown halt). **Paper only for this user:** Polymarket's own geoblock check returned BLOCKED (BR/SP). Never help bypass geoblocking (no VPN/VPS in another country).
+- **Polymarket desk** (`desk/`): scans markets every 10 min, the LLM only estimates probabilities, deterministic rules trade (8pp edge, ½ Kelly, 6% cap). **Paper only for this user:** Polymarket's own geoblock check returned BLOCKED (BR/SP). Never help bypass geoblocking (no VPN/VPS in another country).
 - **Memecoin agent** (`desk/memes/`, Solana): discovery on DexScreener + Jupiter lists, market filters, free X signals via FxTwitter, RugCheck safety, real Jupiter quotes, Claude can only veto. It buys 3% of the bankroll, holds at most 4 positions, and exits by fixed rules (stop -30%, half at +100%, trailing stop 30%, 24h max, X link gone). Paper fills at real Jupiter quotes. This is the user's only possible real-money path.
-- Both "pay to exist" (`[economy]`, cost per Claude call) and switch themselves off at a 40% drawdown.
+- Both "pay to exist" (`[economy]`, cost per Claude call) and are switched off when they don't make money. Since 2026-10-13 the user's `config.toml` sets `drawdown_halt = 1.0` for both: off only when the money runs out (equity under `economy.BROKE_USD` = $1; `economy.shutdown_line`). The code default stays 0.40 (the guide's 40% stop). To keep trying until broke, memecoin buys never go under `min_trade_usd` while there is cash for it.
 
 ## Working rules (from the user)
-- **Commit and push straight to `main`. No branches, no PRs.** Run the test suite (`.venv\Scripts\python -m pytest -q`, 520 tests as of 2026-10-13, 9 skipped without the live extras) before each commit.
+- **Commit and push straight to `main`. No branches, no PRs.** Run the test suite (`.venv\Scripts\python -m pytest -q`, 524 tests as of 2026-10-13, 9 skipped without the live extras) before each commit.
 - Work autonomously to the end. Stop only to ask a real question, when tokens run out, or when the PC is off. Anything the user must provide (credentials, keys, decisions) goes into `docs/PENDENCIAS.md` with step-by-step instructions instead of blocking.
 - Never handle private keys, seeds or tokens in chat; they live only in `.env` (never committed). Real money is always the user's decision. Real mode needs `mode="live"` in `config.toml` plus `DESK_LIVE` / `MEMES_LIVE=I_UNDERSTAND`.
 - Keep risk rules deterministic in code. Be honest that profit is not guaranteed.
@@ -54,4 +54,4 @@ copy .env.example .env       # fill only what is needed; paper mode needs nothin
 
 ## Possible next steps
 - Once `memes-review` has a few days of finished windows, read it with the user: a filter whose rejections average positive is a candidate to loosen; a negative "Comprou" average means the agent has no edge.
-- The Polymarket desk keeps paying rent while DNS-blocked and will hit its 40% line in ~33 days without trading. The user can pause it by disabling `PolymarketDesk`; changing the economy rules for blocked days is the user's call.
+- The Polymarket desk keeps paying rent while DNS-blocked and runs out of money in ~118 days without trading (runway now counts the fixed rent). The user can pause it by disabling `PolymarketDesk`; changing the economy rules for blocked days is the user's call.

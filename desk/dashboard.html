@@ -188,7 +188,7 @@
   <!-- RESUMO -->
   <section id="tab-resumo" role="tabpanel" class="tabpanel" style="display:grid;gap:16px">
     <div class="rule"><span aria-hidden="true">⚡</span><span><b>Os robôs precisam fazer dinheiro.</b> Cada análise do Claude e o aluguel saem do caixa deles.
-      Se o saldo cair até a linha de corte (40% abaixo do maior saldo que já tiveram), eles são <b>desligados</b>: param de operar e de gastar.</span></div>
+      <span id="rule-line">Se o dinheiro acabar, eles são</span> <b>desligados</b>: param de operar e de gastar.</span></div>
     <div id="r-alerts" class="alerts"></div>
     <div class="grid2">
       <article class="card robot" id="r-memes" tabindex="0" data-goto="memes"></article>
@@ -521,8 +521,13 @@ function schedulerText(sc, every) {
 }
 
 // --- survival: it must make money, or at the cut-off line it is switched off ----------------------------------------
-// life = 100% at its peak balance, 0% at the line (drawdown_halt below the peak)
-const lifeLeft = (drawdown, halt) => Math.max(0, Math.min(1, 1 - (drawdown || 0) / (halt || 1)));
+// life = 100% at its peak balance, 0% at the cut-off line (drawdown_halt below the peak, or broke when it is 100%)
+const BROKE_USD = 1.0;  // desk/economy.py: below this nothing can be traded, the money ran out
+const lifeLeft = (o) => Math.max(0, Math.min(1, (o.equity - o.shutdown) / Math.max(o.peak - o.shutdown, 1e-9)));
+const brokeRule = (o) => o.halt >= 1;  // switched off only when the money runs out
+const lineText = (o) => (brokeRule(o) ? `Se o dinheiro acabar (saldo abaixo de ${fmtUsd(BROKE_USD)}), ele é desligado.`
+  : `Se o saldo cair até ${fmtUsd(o.shutdown)} (${fmtPct(o.halt)} abaixo do maior saldo, ${fmtUsd(o.peak)}), ele é desligado.`);
+const lifePct = (x) => `${Math.floor(100 * x + 1e-9)}%`;  // rounded down: 100% only at the peak
 const lifeKind = (x) => (x > 0.5 ? "" : x > 0.25 ? "warn" : "danger");
 function meterNode(x) {
   const bar = el("div"); bar.style.width = 100 * x + "%";
@@ -532,15 +537,15 @@ const isDead = (o) => o.halted && o.haltReason !== "manual";  // a manual sell-a
 
 function survivalCard(id, o) {
   const host = document.getElementById(id), dead = isDead(o);
-  const x = dead ? 0 : lifeLeft(o.drawdown, o.halt);
+  const x = dead ? 0 : lifeLeft(o);
   host.className = "card survival " + (dead ? "dead" : lifeKind(x));
   fill(id,
     el("div", { class: "head" }, dead
       ? [el("b", { class: "neg", text: "DESLIGADO: não fez dinheiro" }),
-         el("span", { text: `O saldo caiu até a linha de corte (${fmtUsd(o.shutdown)}). Parou de operar e de gastar. Para religar: ${o.resumeCmd}` })]
+         el("span", { text: `${brokeRule(o) ? "O dinheiro acabou" : `O saldo caiu até a linha de corte (${fmtUsd(o.shutdown)})`}. Parou de operar e de gastar. Para religar: ${o.resumeCmd}` })]
       : [el("b", { text: "Precisa fazer dinheiro para continuar ligado" }),
-         el("span", { class: "muted", text: `Os custos saem do caixa dele. Se o saldo cair até ${fmtUsd(o.shutdown)} (${fmtPct(o.halt)} abaixo do maior saldo, ${fmtUsd(o.peak)}), ele é desligado.` })]),
-    dead ? null : el("div", { class: "life" }, [el("span", { class: "muted", text: "Vida" }), meterNode(x), el("span", { class: "pct", text: fmtPct(x) })]),
+         el("span", { class: "muted", text: `Os custos saem do caixa dele. ${lineText(o)}` })]),
+    dead ? null : el("div", { class: "life" }, [el("span", { class: "muted", text: "Vida" }), meterNode(x), el("span", { class: "pct", text: lifePct(x) })]),
     el("div", { class: "facts" }, [
       dead ? null : el("span", {}, ["pode perder mais ", el("b", { text: fmtUsd(Math.max(0, o.equity - o.shutdown)) })]),
       el("span", {}, ["ganhou operando ", signed(o.trading)]),
@@ -552,10 +557,11 @@ function survivalCard(id, o) {
 }
 
 function miniLife(o) {
-  const dead = isDead(o), x = dead ? 0 : lifeLeft(o.drawdown, o.halt);
+  const dead = isDead(o), x = dead ? 0 : lifeLeft(o);
+  const until = brokeRule(o) ? "até o dinheiro acabar" : `até ser desligado em ${fmtUsd(o.shutdown)}`;
   return el("div", { class: "mini-life " + (dead ? "danger" : lifeKind(x)) }, [
     el("div", { class: "facts" }, dead ? [el("b", { class: "neg", text: "Desligado: não fez dinheiro" })]
-      : [el("span", {}, ["Vida ", el("b", { text: fmtPct(x) }), ` · pode perder mais ${fmtUsd(Math.max(0, o.equity - o.shutdown))} até ser desligado em ${fmtUsd(o.shutdown)}`])]),
+      : [el("span", {}, ["Vida ", el("b", { text: lifePct(x) }), ` · pode perder mais ${fmtUsd(Math.max(0, o.equity - o.shutdown))} ${until}`])]),
     meterNode(x)]);
 }
 const memesLife = (m) => ({ equity: m.equity, peak: m.peak, shutdown: m.shutdown_line, drawdown: m.drawdown, halt: m.drawdown_halt,
@@ -616,6 +622,9 @@ function robotCard(id, { name, mode, halted, sched, equity, start, curve, factsL
 
 function renderResumo(s) {
   const m = s.memes;
+  const allBroke = s.drawdown_halt >= 1 && (!m || m.drawdown_halt >= 1);
+  document.getElementById("rule-line").textContent = allBroke ? "Se o dinheiro acabar, eles são"
+    : "Se o saldo cair até a linha de corte de cada um (veja abaixo), eles são";
   fill("r-alerts", ...alertNodes(memesAlerts(m), "Memecoins:"), ...alertNodes(polyAlerts(s).filter(([, text]) => !text.includes("bloqueia o Polymarket")), "Polymarket:"));
   if (m) {
     const r = m.readiness, progress = Math.min(r.days / Math.max(r.min_days, 1), r.closed / Math.max(r.min_trades, 1), r.net > 0 ? 1 : 0);

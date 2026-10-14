@@ -13,7 +13,7 @@ Tudo que eu (Claude) não posso fazer por você: credenciais, dinheiro e decisõ
 | Agendador do Windows | **Ligado neste desktop.** `PolymarketDesk` a cada 10 min; `PolymarketDeskMemes` (memecoins) a cada 3 min; `PolymarketDeskMemesExits` (saídas) a cada 1 min; `PolymarketDeskMemesReview` (revisão dos filtros) a cada hora; `PolymarketDeskMonthly` todo dia; `PolymarketDeskDashboard` mantém o painel ligado |
 | Painel | **Sempre ligado:** http://127.0.0.1:8765, atalho **"Painel dos robos"** na área de trabalho. Sobe sozinho quando você entra no Windows |
 | Polymarket (paper) | O agendador roda, mas **o DNS desta rede recusa os endereços do Polymarket** (`DNS operation refused`): os ciclos não varrem nada, e o painel diz isso. É o bloqueio do Brasil: não contorne (nada de VPN nem de trocar o DNS para fugir dele). Se a rede voltar a resolver, ele volta a varrer sozinho. Enquanto isso, ele paga o aluguel diário sem poder operar e chega à linha de desligamento em ~33 dias; esse resultado não mede nada. Para pausar só ele: desative `PolymarketDesk` no Agendador de Tarefas |
-| Economia | O robô paga para existir: aluguel diário (assinatura rateada) + US$0,01 por análise, saindo do caixa dele. Se não lucrar mais que isso, é **desligado** na linha de 40% |
+| Economia | O robô paga para existir: aluguel diário (assinatura rateada) + US$0,01 por análise, saindo do caixa dele. Se não lucrar mais que isso, o dinheiro acaba e ele é **desligado** |
 | Modo real (Polymarket) | **Bloqueado para você**: em 13/10 o próprio Polymarket respondeu `Geobloqueio: BLOQUEADO (país=BR região=SP)`. Veja "Caminho para o dinheiro real" |
 | Memecoins (Solana) | **Rodando em paper neste desktop**, com banca nova de US$100 (o histórico do notebook era de poucas horas e ficou lá). Compra e vende sozinho com cotações reais da Jupiter. Corrigido em 13/10: o FxTwitter responde "não encontrado" para contas que existem em ~1 de cada 3 chamadas, e isso vendia posições boas minutos depois da compra (VEIL e CRAWLER). Agora o "post/perfil apagado" só vale depois de 3 respostas seguidas e 5 minutos sumido. Modo real pronto e protegido no código, travado até você ligar |
 | Em alta | **Novo:** o painel mostra as maiores movimentações de memecoins da última hora (como o "Em alta" do fomo.family), com link para cada token no fomo, e o maior pico de cada um nas últimas 24h. Só acompanhamento: não compra nada |
@@ -51,7 +51,7 @@ Cada passo depende do anterior:
 7. **Primeira semana com banca mínima** (US$30–50) e olho no Telegram e no painel. O modo real foi testado com transações simuladas, nunca contra a rede de verdade.
 8. **Impostos.** Ganho com cripto em carteira própria entra no imposto de renda e as regras mudaram recentemente. Confirme com um contador como declarar.
 
-Regras que não mudam no modo real: o robô **não saca** (tirar dinheiro é sempre com você) e cada token recebe no máximo 3% da banca. Caiu 40% do pico, ele é desligado.
+Regras que não mudam no modo real: o robô **não saca** (tirar dinheiro é sempre com você) e cada token recebe no máximo 3% da banca (ou US$1, a compra mínima, quando sobra pouco). Se o dinheiro acabar, ele é desligado: **no modo real, isso é perder a banca inteira**; para parar antes, use `drawdown_halt = 0.40` (desliga ao cair 40% do pico).
 
 ---
 
@@ -125,7 +125,7 @@ Cada ação custa dinheiro do próprio caixa do robô:
 - **US$0,01 por análise:** cada "pensamento".
 - **Teto de gasto:** 1,5% da equity por dia. Com US$100, são US$1,50/dia. Com pouco dinheiro, ele precisa escolher onde pensar.
 
-Sem lucro, em ~33 dias ele cai 40% e é **desligado**. Desligado, ele para de operar, de analisar e de pagar aluguel, escreve o post-mortem e te avisa. Para religar: `python -m desk resume`.
+Sem lucro, em ~118 dias o dinheiro acaba e ele é **desligado** (`drawdown_halt = 1.0`, escolha sua em 13/10; com `0.40` seriam ~33 dias, ao cair 40%). Desligado, ele para de operar, de analisar e de pagar aluguel, escreve o post-mortem e te avisa. Para religar: `python -m desk resume`.
 
 Ajustes possíveis:
 - **Modo difícil:** `cost_per_analysis_usd = 0.10` simula o preço de API.
@@ -146,8 +146,8 @@ O agente de memecoins (`[memes]` no `config.toml`) já compra e vende sozinho **
 6. **Claude (só veta):** recebe os dados do X e busca na web e no X se o token é golpe, cópia, conta comprada ou propaganda paga. Veta quando acha sinal de alerta; falta de notícia sobre um token de poucas horas não é motivo. Ele nunca obriga uma compra.
 7. **Compra** 3% da banca (US$3 com US$100), no máximo 4 tokens ao mesmo tempo.
 8. **Vende** pelas regras: stop de -30%, metade ao dobrar, stop móvel de 30% abaixo do pico, liquidez caindo pela metade, 24h no máximo, ou na hora se o post/perfil do X do token for apagado.
-9. **Freios:** perdeu 15% em 24h, pausa as compras; caiu 40% do pico, é desligado. As saídas rodam a cada minuto mesmo com um freio ativo.
-10. **Paga para existir:** cada checagem do Claude custa US$0,01 do caixa dele. Se cair 40% do pico, é **desligado**: para de comprar e de gastar, mas continua vendendo pelas regras.
+9. **Freios:** perdeu 15% em 24h, pausa as compras; o dinheiro acabou, é desligado. As saídas rodam a cada minuto mesmo com um freio ativo.
+10. **Paga para existir:** cada checagem do Claude custa US$0,01 do caixa dele. Se o dinheiro acabar, é **desligado**: para de comprar e de gastar, mas continua vendendo pelas regras.
 
 Suas escolhas:
 - **Só alertas (opção B):** `auto_trade = false`. Ele manda no Telegram os tokens aprovados e você compra à mão no fomo.family, se quiser.

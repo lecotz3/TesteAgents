@@ -25,6 +25,19 @@ def test_runway_assumes_it_keeps_spending_its_full_budget(store):
     assert e.trading_pnl == 0.0 and e.net == pytest.approx(-0.67)
 
 
+def test_cut_off_at_zero_means_the_money_ran_out_and_the_rent_drains_the_end(store):
+    from desk.config import RiskSettings
+    from desk.economy import BROKE_USD
+
+    store.record_equity(NOW, 99.33, 99.33, 0.0)
+    s = Settings(risk=RiskSettings(drawdown_halt=1.0), economy=EconomySettings(max_daily_burn_pct=0.015, daily_rent_usd=0.5))
+    e = economics(store, s, NOW)
+    assert e.shutdown_line == BROKE_USD == 1.0
+    # 1.5% a day while that beats the rent (down to 0.5 / 0.015 = $33.33), then $0.50 a day down to $1
+    knee = 0.5 / 0.015
+    assert e.runway_days == pytest.approx(math.log(knee / 99.33) / math.log(0.985) + (knee - 1.0) / 0.5)
+
+
 def test_runway_is_zero_below_the_line(store):
     store.record_equity(NOW, 100.0, 100.0, 0.0)
     store.record_equity(NOW, 55.0, 55.0, 0.0)

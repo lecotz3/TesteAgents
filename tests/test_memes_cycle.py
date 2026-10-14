@@ -734,3 +734,17 @@ def test_each_cycle_records_the_biggest_moves_even_when_it_cannot_buy(tmp_path, 
 def test_a_failed_movers_list_never_breaks_the_cycle(tmp_path, store):
     report = run_meme_cycle(deps(tmp_path, store, tokens=FakeTokens(fail=httpx.ConnectError("down"))))
     assert store.latest_movers() == [] and any("Jupiter" in e for e in report.errors)
+
+
+def test_memes_cut_off_at_zero_keeps_it_alive_after_a_big_loss_and_ends_it_when_broke(tmp_path, store):
+    store.record_equity(NOW - timedelta(hours=2), 100.0, 100.0, 0.0)
+    store.adjust_cash(-70.0)  # $30 left
+    notifier = CapturingNotifier()
+    report = run_meme_cycle(deps(tmp_path, store, dex=FakeDex({}, discovered=[]), notifier=notifier, drawdown_halt=1.0,
+                                 daily_loss_pause_pct=0))
+    assert not report.halted
+    store.adjust_cash(-29.5)  # $0.50 left: not even the $1 minimum trade
+    report = run_meme_cycle(deps(tmp_path, store, dex=FakeDex({}, discovered=[]), notifier=notifier, drawdown_halt=1.0,
+                                 daily_loss_pause_pct=0))
+    assert report.halted and store.is_halted()
+    assert any("DESLIGADO" in m and "dinheiro acabou" in m for m in notifier.sent)
