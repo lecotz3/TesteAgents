@@ -268,11 +268,15 @@ def cmd_live_check(app: App) -> int:
 
 
 def _dashboard_running(http: httpx.Client, url: str) -> bool:
-    """True when our own panel already answers at `url` (e.g. the logon task started it in the background)."""
+    """True when our own panel already answers at `url` (e.g. the logon task started it in the background).
+
+    It reads the page, not /api/state: a panel that just started takes more than 5s on its first snapshot.
+    """
     try:
-        return "now" in http.get(url + "api/state", timeout=5.0).json()
-    except (httpx.HTTPError, ValueError):
+        page = http.get(url, timeout=5.0)
+    except httpx.HTTPError:
         return False
+    return page.status_code == 200 and '"/api/state"' in page.text
 
 
 def cmd_dashboard(app: App, port: int = 8765, open_browser: bool = True) -> int:

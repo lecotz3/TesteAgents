@@ -8,8 +8,8 @@ Tudo que eu (Claude) não posso fazer por você: credenciais, dinheiro e decisõ
 
 | Item | Estado |
 |---|---|
-| **Onde os robôs rodam** | **No desktop (DESKTOP-7FOLHUU)**, desde 13/10 às 21:47, por decisão sua. É um PC de mesa, sem bateria, configurado para nunca dormir na tomada. **Falta você desligar as tarefas no notebook** (item A1 logo abaixo) |
-| Código | Pronto, 499 testes passando, direto na `main` |
+| **Onde os robôs rodam** | **No desktop (DESKTOP-7FOLHUU)**, desde 13/10 às 21:47, por decisão sua. É um PC de mesa, sem bateria, configurado para nunca dormir na tomada. As tarefas do notebook foram removidas em 14/10 (item A1) |
+| Código | Pronto, 527 testes passando, direto na `main` |
 | Agendador do Windows | **Ligado neste desktop.** `PolymarketDesk` a cada 10 min; `PolymarketDeskMemes` (memecoins) a cada 3 min; `PolymarketDeskMemesExits` (saídas) a cada 1 min; `PolymarketDeskMemesReview` (revisão dos filtros) a cada hora; `PolymarketDeskMonthly` todo dia; `PolymarketDeskDashboard` mantém o painel ligado |
 | Painel | **Sempre ligado:** http://127.0.0.1:8765, atalho **"Painel dos robos"** na área de trabalho. Sobe sozinho quando você entra no Windows |
 | Polymarket (paper) | O agendador roda, mas **o DNS desta rede recusa os endereços do Polymarket** (`DNS operation refused`): os ciclos não varrem nada, e o painel diz isso. É o bloqueio do Brasil: não contorne (nada de VPN nem de trocar o DNS para fugir dele). Se a rede voltar a resolver, ele volta a varrer sozinho. Enquanto isso, ele paga o aluguel diário sem poder operar e chega à linha de desligamento em ~33 dias; esse resultado não mede nada. Para pausar só ele: desative `PolymarketDesk` no Agendador de Tarefas |
@@ -19,7 +19,9 @@ Tudo que eu (Claude) não posso fazer por você: credenciais, dinheiro e decisõ
 | Em alta | **Novo:** o painel mostra as maiores movimentações de memecoins da última hora (como o "Em alta" do fomo.family), com link para cada token no fomo, e o maior pico de cada um nas últimas 24h. Só acompanhamento: não compra nada |
 | Revisão dos filtros | **Nova:** `memes-review` e a tabela "Os filtros acertam?" no painel mostram, para cada motivo de compra ou rejeição, o que teria acontecido nas 24h seguintes. Os primeiros resultados aparecem 24h depois das primeiras decisões (14/10 à noite) |
 
-## A1. Desligar os robôs no notebook (faça agora)
+## A1. Desligar os robôs no notebook (feito em 14/10)
+**Feito.** Em 14/10 o `uninstall_task.ps1` removeu as tarefas do notebook (os robôs e o painel), e o código dele foi atualizado. Se um dia for mover os robôs de novo, siga os passos abaixo no PC antigo.
+
 Os robôs agora rodam neste desktop. Se o notebook continuar ligado com as tarefas, ele roda uma segunda cópia: em paper isso cria um histórico separado e confuso e **gasta a sua cota do Claude duas vezes**. No modo real seriam duas cópias operando a mesma carteira. No notebook:
 1. Abra o PowerShell na pasta do projeto.
 2. Rode `powershell -ExecutionPolicy Bypass -File scripts\uninstall_task.ps1`.

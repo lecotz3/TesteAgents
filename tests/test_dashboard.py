@@ -196,6 +196,13 @@ def test_server_serves_page_and_state(server):
     assert httpx.get(base(server) + "/nada").status_code == 404
 
 
+def test_a_second_dashboard_cannot_take_the_same_port(server, state):
+    # On Windows SO_REUSEADDR lets two servers share a port: a second copy would serve in silence
+    # instead of failing, so `dashboard` would never notice the panel already running.
+    with pytest.raises(OSError):
+        make_server(state, Settings(), port=server.server_address[1], scheduler=no_scheduler)
+
+
 def test_server_rejects_foreign_host_header(server):
     # DNS rebinding: a web page on another site must not read the desk through the browser.
     assert httpx.get(base(server) + "/api/state", headers={"Host": "evil.example"}).status_code == 403

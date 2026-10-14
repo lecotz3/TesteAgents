@@ -281,4 +281,10 @@ def make_server(
         def log_message(self, format: str, *args) -> None:  # noqa: A002 - keep the console quiet
             pass
 
-    return ThreadingHTTPServer((host, port), Handler)
+    return DashboardServer((host, port), Handler)
+
+
+class DashboardServer(ThreadingHTTPServer):
+    # On Windows SO_REUSEADDR lets a second server bind a port already in use, so a second copy
+    # would serve in silence instead of noticing the panel already running.
+    allow_reuse_address = sys.platform != "win32"

@@ -194,9 +194,15 @@ def busy_port(state_dir, settings, **kwargs):
     raise OSError("address already in use")
 
 
+PANEL_PAGE = '<title>Painel dos robôs</title><script>fetch("/api/state")</script>'
+
+
 @respx.mock
 def test_dashboard_command_opens_the_panel_already_running_in_the_background(app, monkeypatch, capsys):
-    respx.get("http://127.0.0.1:8765/api/state").mock(return_value=httpx.Response(200, json={"now": "x"}))
+    # A panel that just started takes more than 5s on its first /api/state (it asks Task Scheduler
+    # through PowerShell), so the check reads the page, which answers at once.
+    respx.get("http://127.0.0.1:8765/").mock(return_value=httpx.Response(200, html=PANEL_PAGE))
+    respx.get("http://127.0.0.1:8765/api/state").mock(side_effect=httpx.ReadTimeout("slow first snapshot"))
     opened = []
     monkeypatch.setattr(cli, "make_server", busy_port)
     monkeypatch.setattr(cli.webbrowser, "open", opened.append)
@@ -206,8 +212,13 @@ def test_dashboard_command_opens_the_panel_already_running_in_the_background(app
 
 
 @respx.mock
-def test_dashboard_command_reports_a_port_taken_by_something_else(app, monkeypatch, capsys):
-    respx.get("http://127.0.0.1:8765/api/state").mock(side_effect=httpx.ConnectError("refused"))
+@pytest.mark.parametrize("answer", [
+    {"side_effect": httpx.ConnectError("refused")},
+    {"return_value": httpx.Response(200, html="<title>Outro programa</title>")},
+    {"return_value": httpx.Response(404, html=PANEL_PAGE)},
+])
+def test_dashboard_command_reports_a_port_taken_by_something_else(app, monkeypatch, capsys, answer):
+    respx.get("http://127.0.0.1:8765/").mock(**answer)
     opened = []
     monkeypatch.setattr(cli, "make_server", busy_port)
     monkeypatch.setattr(cli.webbrowser, "open", opened.append)
