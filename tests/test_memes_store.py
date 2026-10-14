@@ -143,3 +143,17 @@ def test_meta_with_prefix_matches_the_exact_prefix(store):
     store.set_meta("pending_buyX", "3")  # "_" is not a wildcard here
     store.set_meta("other", "4")
     assert store.meta_with_prefix("pending_buy:") == {"pending_buy:A": "1", "pending_buy:B": "2"}
+
+
+def test_movers_are_kept_three_days_and_read_back(store):
+    from desk.memes.movers import parse_mover
+    from desk.config import MemesSettings
+    from tests.test_memes_movers import jup_item
+
+    fresh = parse_mover(jup_item(), NOW, MemesSettings())
+    store.record_movers(NOW - timedelta(days=4), [fresh])
+    store.record_movers(NOW, [fresh, parse_mover(jup_item("B", "B", change_1h=-50.0), NOW, MemesSettings())])
+    latest = store.latest_movers()
+    assert [m["symbol"] for m in latest] == ["FPAD", "B"] and latest[0]["verdict"] == "low_liquidity"
+    assert latest[0]["ts"] == NOW and latest[0]["change_1h"] == pytest.approx(79.07)
+    assert len(store.movers_since(NOW - timedelta(days=10))) == 2  # the 4-day-old row was pruned

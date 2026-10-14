@@ -85,6 +85,10 @@ jup_discovery = true
 jup_categories = ["toptraded", "toporganicscore", "toptrending"]
 jup_interval = "1h"
 
+# Em alta (só acompanhar, não compra): as maiores movimentações da hora no painel, como o "Em alta" do fomo.family
+movers_max_age_days = 7        # só memecoins: tokens mais velhos que isso (ZEC, HYPE...) ficam de fora
+movers_keep = 20               # quantas guardar por ciclo, das maiores variações em 1h (para cima ou para baixo)
+
 # Filtros de segurança (RugCheck)
 min_lp_locked_pct = 80
 max_top10_holders_pct = 30

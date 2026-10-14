@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+import sqlite3
+from datetime import datetime, timedelta
 
 from desk.memes.models import MemeFill, MemePosition
 from desk.store import BASE_SCHEMA, Ledger, _dt, _iso
@@ -26,7 +27,11 @@ CREATE TABLE IF NOT EXISTS decisions (
     id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, mint TEXT NOT NULL, symbol TEXT NOT NULL,
     price_usd REAL, liquidity_usd REAL, market_cap_usd REAL, decision TEXT NOT NULL, detail TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS movers (ts TEXT NOT NULL, mint TEXT NOT NULL, symbol TEXT NOT NULL, mcap REAL NOT NULL,
+    change_1h REAL NOT NULL, volume_1h REAL NOT NULL, payload TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS movers_ts ON movers (ts);
 """
+MOVERS_KEEP_DAYS = 3
 
 
 class MemeStore(Ledger):
@@ -127,6 +132,33 @@ class MemeStore(Ledger):
             {**dict(r), "ts": _dt(r["ts"]), "amount_raw": int(r["amount_raw"])}
             for r in self._db.execute(sql, params).fetchall()
         ]
+
+    # --- biggest moves (tracking only) ----------------------------------------
+    def record_movers(self, ts: datetime, movers: list) -> None:
+        """One snapshot of the biggest moves; anything older than MOVERS_KEEP_DAYS goes."""
+        with self._db:
+            self._db.executemany(
+                "INSERT INTO movers (ts, mint, symbol, mcap, change_1h, volume_1h, payload) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [(_iso(ts), m.mint, m.symbol, m.mcap, m.change_1h, m.volume_1h, json.dumps(m.as_dict())) for m in movers],
+            )
+            self._db.execute("DELETE FROM movers WHERE ts < ?", (_iso(ts - timedelta(days=MOVERS_KEEP_DAYS)),))
+
+    def latest_movers(self) -> list[dict]:
+        """The last snapshot, in the order it was ranked."""
+        try:
+            rows = self._db.execute("SELECT ts, payload FROM movers WHERE ts = (SELECT MAX(ts) FROM movers) "
+                                    "ORDER BY rowid").fetchall()
+        except sqlite3.OperationalError:
+            return []  # the read-only panel on a database the agent has not upgraded yet
+        return [{**json.loads(r["payload"]), "ts": _dt(r["ts"])} for r in rows]
+
+    def movers_since(self, cutoff: datetime) -> list[dict]:
+        try:
+            rows = self._db.execute("SELECT ts, mint, symbol, mcap, change_1h, volume_1h FROM movers WHERE ts >= ? "
+                                    "ORDER BY ts", (_iso(cutoff),)).fetchall()
+        except sqlite3.OperationalError:
+            return []
+        return [{**dict(r), "ts": _dt(r["ts"])} for r in rows]
 
     def all_decisions(self) -> list[dict]:
         rows = self._db.execute("SELECT * FROM decisions ORDER BY id").fetchall()

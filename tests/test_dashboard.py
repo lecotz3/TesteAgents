@@ -111,6 +111,25 @@ def test_memes_review_on_the_panel_reads_only_the_cache(state):
     assert row["count"] == 1 and row["average"] == pytest.approx(0.4) and row["wins"] == 1 and row["open"] == 0
 
 
+def test_panel_shows_the_biggest_moves_now_and_the_peaks_of_the_day(state):
+    from desk.memes.movers import parse_mover
+    from tests.test_memes_movers import jup_item
+
+    add_memes(state)
+    store = MemeStore(state / "memes.db", start_cash=100.0)
+    s = Settings().memes
+    store.record_movers(NOW - timedelta(hours=2), [parse_mover(jup_item(change_1h=300.0, mcap=3e6), NOW, s)])
+    store.record_movers(NOW - timedelta(minutes=3), [parse_mover(jup_item(change_1h=-20.0, mcap=8e5), NOW, s)])
+    store.close()
+    movers = snapshot(state, Settings(), NOW, no_scheduler)["memes"]["movers"]
+    [now] = movers["now"]
+    assert now["symbol"] == "FPAD" and now["change_1h"] == -20.0 and now["link"].startswith("https://fomo.family/")
+    assert now["verdict"] == "low_liquidity" and movers["updated"] == (NOW - timedelta(minutes=3)).isoformat()
+    [peak] = movers["day"]
+    assert peak["peak_change_1h"] == 300.0 and peak["peak_mcap"] == 3e6 and peak["mcap_now"] == 8e5
+    json.dumps(movers)
+
+
 def test_tail_handles_missing_files_and_long_logs(tmp_path):
     assert tail(tmp_path / "nope.log", 5) == []
     log = tmp_path / "big.log"

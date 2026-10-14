@@ -718,3 +718,19 @@ def test_a_crash_while_checking_uncertain_orders_never_blocks_the_stops(tmp_path
                                  executor=LiveLikeExecutor(jup, balance=RuntimeError("bug"))))
     assert store.closed_positions()[0].close_reason == "stop_loss"  # the stop still fired
     assert any("incertas" in e for e in report.errors)
+
+
+def test_each_cycle_records_the_biggest_moves_even_when_it_cannot_buy(tmp_path, store):
+    from tests.test_memes_movers import jup_item
+
+    for i in range(4):  # every slot taken: no discovery, but the movers are still tracked
+        held = make_meme_position(mint=f"held{i}")
+        store.open_position(held, MemeFill("BUY", held.amount_raw, 3.0, 0.002), NOW, "x")
+    tokens = FakeTokens(items=[jup_item("A", "A", change_1h=40.0), jup_item("B", "B", change_1h=-65.0)])
+    run_meme_cycle(deps(tmp_path, store, tokens=tokens, dex=FakeDex({}, discovered=[])))
+    assert [m["symbol"] for m in store.latest_movers()] == ["B", "A"]
+
+
+def test_a_failed_movers_list_never_breaks_the_cycle(tmp_path, store):
+    report = run_meme_cycle(deps(tmp_path, store, tokens=FakeTokens(fail=httpx.ConnectError("down"))))
+    assert store.latest_movers() == [] and any("Jupiter" in e for e in report.errors)

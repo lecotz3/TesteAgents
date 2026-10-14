@@ -16,6 +16,7 @@ from desk.executor.base import ExecutionError, ExecutionUncertain
 from desk.journal import Journal, format_note
 from desk.memes.executor import MemeExecutor, PriceMoved, usdc_raw
 from desk.memes.models import USDC_MINT, MemeFill, MemePosition, Pair, Quote, Safety
+from desk.memes.movers import biggest_moves
 from desk.memes.rules import exit_decision, market_rejection, position_size_usd, quote_rejection, safety_rejection
 from desk.memes.sources import FETCH_ERRORS, TokenInfo
 from desk.memes.store import MemeStore
@@ -57,6 +58,8 @@ class QuoteSource(Protocol):
 
 class TokenSource(Protocol):
     def discover(self, categories: list[str], interval: str, limit: int = 100) -> list[str]: ...
+
+    def lists(self, categories: list[str], interval: str, limit: int = 100) -> list[dict]: ...
 
     def info(self, mints: list[str]) -> dict[str, TokenInfo]: ...
 
@@ -169,6 +172,7 @@ class _MemeCycle:
         self.reclaim_rent()
         if not self.store.is_halted() and not self.bad_day():
             self.scan_and_enter()
+        self.track_movers()
         self.record_equity()
         self.track_vetter_health()
         self.report.halted = self.store.is_halted()
@@ -623,6 +627,20 @@ class _MemeCycle:
             except FETCH_ERRORS as exc:
                 self.error(f"listas da Jupiter falharam: {type(exc).__name__}")
         return list(found)
+
+    def track_movers(self) -> None:
+        """The biggest moves of the hour for the panel (fomo's "Em alta"), from the Jupiter lists discovery already
+        fetched this run. Tracking only: a failure here never touches trading."""
+        if not self.s.jup_discovery or self.d.tokens is None:
+            return
+        try:
+            items = self.d.tokens.lists(self.s.jup_categories, self.s.jup_interval)
+        except FETCH_ERRORS as exc:
+            self.error(f"listas da Jupiter (maiores movimentações) falharam: {type(exc).__name__}")
+            return
+        movers = biggest_moves(items, self.now, self.s)
+        if movers:
+            self.store.record_movers(self.now, movers)
 
     def enrich(self, pairs: dict[str, Pair]) -> dict[str, Pair]:
         """Jupiter's organic score, and its X link when DexScreener has none."""

@@ -16,6 +16,7 @@ Tudo que eu (Claude) não posso fazer por você: credenciais, dinheiro e decisõ
 | Economia | O robô paga para existir: aluguel diário (assinatura rateada) + US$0,01 por análise, saindo do caixa dele. Se não lucrar mais que isso, é **desligado** na linha de 40% |
 | Modo real (Polymarket) | **Bloqueado para você**: em 13/10 o próprio Polymarket respondeu `Geobloqueio: BLOQUEADO (país=BR região=SP)`. Veja "Caminho para o dinheiro real" |
 | Memecoins (Solana) | **Rodando em paper neste desktop**, com banca nova de US$100 (o histórico do notebook era de poucas horas e ficou lá). Compra e vende sozinho com cotações reais da Jupiter. Corrigido em 13/10: o FxTwitter responde "não encontrado" para contas que existem em ~1 de cada 3 chamadas, e isso vendia posições boas minutos depois da compra (VEIL e CRAWLER). Agora o "post/perfil apagado" só vale depois de 3 respostas seguidas e 5 minutos sumido. Modo real pronto e protegido no código, travado até você ligar |
+| Em alta | **Novo:** o painel mostra as maiores movimentações de memecoins da última hora (como o "Em alta" do fomo.family), com link para cada token no fomo, e o maior pico de cada um nas últimas 24h. Só acompanhamento: não compra nada |
 | Revisão dos filtros | **Nova:** `memes-review` e a tabela "Os filtros acertam?" no painel mostram, para cada motivo de compra ou rejeição, o que teria acontecido nas 24h seguintes. Os primeiros resultados aparecem 24h depois das primeiras decisões (14/10 à noite) |
 
 ## A1. Desligar os robôs no notebook (faça agora)

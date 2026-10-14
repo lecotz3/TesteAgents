@@ -15,6 +15,7 @@ from typing import Callable
 from desk.config import Settings
 from desk.economy import economics
 from desk.memes.cycle import PENDING_BUY, UNCERTAIN_SELL
+from desk.memes.movers import day_peaks
 from desk.memes.readiness import readiness
 from desk.memes.review import review, summarize
 from desk.memes.store import MemeStore
@@ -137,10 +138,22 @@ def memes_snapshot(state_dir: Path, settings: Settings, now: datetime,
             "uncertain": _uncertain_orders(store, positions),
             "review": [asdict(r) for r in summarize(
                 review(store.all_decisions(), None, state_dir / "memes-review.json", m, now, max_fetch=0))],
+            "movers": _movers(store, now),
             "scheduler": scheduler() if scheduler else None,
         }
     finally:
         store.close()
+
+
+def _movers(store: MemeStore, now: datetime) -> dict:
+    """The biggest moves of the last cycle and each token's biggest hour in the last 24h (fomo's "Em alta")."""
+    latest = store.latest_movers()
+    peaks = day_peaks(store.movers_since(now - timedelta(hours=24)))
+    return {
+        "updated": _iso(latest[0]["ts"]) if latest else None,
+        "now": [{**m, "ts": _iso(m["ts"])} for m in latest],
+        "day": [{**p, "peak_at": _iso(p["peak_at"]), "last_seen": _iso(p["last_seen"])} for p in peaks],
+    }
 
 
 def _uncertain_orders(store: MemeStore, positions) -> list[dict]:

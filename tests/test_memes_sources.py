@@ -155,6 +155,16 @@ def test_jupiter_tokens_discover_merges_lists_and_survives_a_failure():
 
 
 @respx.mock
+def test_jupiter_lists_are_fetched_once_per_run_for_discovery_and_movers():
+    route = respx.get(JUP + "/tokens/v2/toptraded/1h").mock(return_value=httpx.Response(200, json=[jup_token("A")]))
+    with httpx.Client() as http:
+        tokens = JupiterTokens(api(http))
+        assert tokens.discover(("toptraded",), "1h") == ["A"]
+        assert [i["id"] for i in tokens.lists(("toptraded",), "1h")] == ["A"]
+    assert route.call_count == 1
+
+
+@respx.mock
 def test_jupiter_tokens_info_reads_organic_score_and_x_link_in_batches():
     mints = [f"M{i}" for i in range(101)]
     route = respx.get(JUP + "/tokens/v2/search").mock(side_effect=lambda req: httpx.Response(200, json=[

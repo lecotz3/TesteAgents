@@ -166,14 +166,19 @@ def make_profile(**o):
 
 
 class FakeTokens:
-    def __init__(self, discovered=(), info=None, fail=None):
-        self.discovered, self.by_mint, self.fail = list(discovered), dict(info or {}), fail
+    def __init__(self, discovered=(), info=None, fail=None, items=()):
+        self.discovered, self.by_mint, self.fail, self.items = list(discovered), dict(info or {}), fail, list(items)
         self.info_calls: list[list[str]] = []
 
     def discover(self, categories, interval, limit=100):
         if self.fail:
             raise self.fail
         return list(self.discovered)
+
+    def lists(self, categories, interval, limit=100):
+        if self.fail:
+            raise self.fail
+        return list(self.items)
 
     def info(self, mints):
         self.info_calls.append(list(mints))

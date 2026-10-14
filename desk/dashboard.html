@@ -66,6 +66,7 @@
   .group-title { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px;
                  padding-top: 16px; border-top: 2px solid var(--line); scroll-margin-top: 72px; }
   .group-title.first { margin-top: 0; padding-top: 0; border-top: 0; }
+  .anchor { scroll-margin-top: 72px; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -73,6 +74,7 @@
 <header>
   <h1>Painel dos robôs</h1>
   <a href="#memes-title">Memecoins</a>
+  <a href="#movers-title">Em alta</a>
   <a href="#poly-title">Polymarket</a>
   <span class="spacer"></span>
   <span id="updated" class="muted">carregando…</span>
@@ -105,6 +107,16 @@
     <section style="margin-top:16px">
       <h2>Posições em memecoins</h2>
       <div class="table-wrap"><table id="m-positions"></table></div>
+    </section>
+    <section style="margin-top:16px" id="movers-title" class="anchor">
+      <h2>Em alta agora: as maiores movimentações de memecoins na última hora <span id="m-movers-updated" class="muted" style="font-weight:400"></span></h2>
+      <div class="muted">As mesmas que o fomo mostra em "Em alta", lidas das listas públicas da Jupiter a cada ciclo (tokens de até 7 dias).
+        Clique no token para abrir no fomo. A última coluna diz se ele passaria no filtro de mercado do robô; só acompanhar, nada aqui compra.</div>
+      <div class="table-wrap"><table id="m-movers"></table></div>
+    </section>
+    <section style="margin-top:16px">
+      <h2>Os maiores das últimas 24h: o pico de cada um e onde está agora</h2>
+      <div class="table-wrap"><table id="m-peaks"></table></div>
     </section>
     <section style="margin-top:16px">
       <h2>Tokens que ele checou a fundo</h2>
@@ -213,6 +225,8 @@ const fomoLink = (mint, text) => el("a", { href: "https://fomo.family/tokens/sol
 const CONFIDENCE = { low: "baixa", medium: "média", high: "alta" };
 const usd = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "USD" });
 const fmtUsd = (x) => (x === null || x === undefined ? "—" : usd.format(x));
+const compactUsd = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 });
+const fmtCompact = (x) => (x === null || x === undefined ? "—" : compactUsd.format(x));
 const fmtSigned = (x) => (x > 0 ? "+" : "") + usd.format(x);
 const fmtPct = (x, d = 0) => (x === null || x === undefined ? "—" : (x * 100).toFixed(d).replace(".", ",") + "%");
 const fmtNum = (x, d = 2) => (x === null || x === undefined ? "—" : Number(x).toFixed(d).replace(".", ","));
@@ -483,6 +497,22 @@ function renderMemes(m) {
     m.trades.map((t) => [[fmtTime(t.ts)], [fomoLink(t.mint, t.symbol)], [ACTIONS[t.side] || t.side], [fmtUsd(t.usd), "num"],
       [el("span", { class: signClass(t.cash_delta), text: fmtSigned(t.cash_delta) }), "num"], [LABELS[t.reason] ? label(t.reason) : t.reason]]),
     "Nenhuma compra ou venda ainda.");
+  const mv = m.movers || { now: [], day: [] };
+  const chg = (x) => el("span", { class: signClass(x / 100), text: (x > 0 ? "+" : "") + fmtNum(x, 0) + "%" });
+  const age = (h) => (h < 1 ? `${Math.round(h * 60)} min` : h < 48 ? `${Math.round(h)}h` : `${Math.round(h / 24)}d`);
+  table("m-movers", [["Token"], ["Idade", "num"], ["Market cap", "num"], ["5 min", "num"], ["1h", "num"], ["24h", "num"],
+    ["Volume 1h", "num"], ["Traders 1h", "num"], ["Holders", "num"], ["Orgânico", "num"], ["Filtro do robô"]],
+    mv.now.map((t) => [[fomoLink(t.mint, `${t.symbol} (${t.name})`), "q"], [age(t.age_hours), "num"], [fmtCompact(t.mcap), "num"],
+      [chg(t.change_5m), "num"], [chg(t.change_1h), "num"], [chg(t.change_24h), "num"], [fmtCompact(t.volume_1h), "num"],
+      [String(t.traders_1h), "num"], [String(t.holders), "num"], [t.organic_score === null ? "—" : fmtNum(t.organic_score, 0), "num"],
+      [t.verdict ? label(t.verdict) : badge("passa", "good")]]),
+    "Ainda sem dados: aparece depois do próximo ciclo das memecoins (a cada 3 min).");
+  document.getElementById("m-movers-updated").textContent = mv.updated ? `atualizado em ${fmtTime(mv.updated)}` : "";
+  table("m-peaks", [["Token"], ["Maior alta em 1h", "num"], ["Quando", ""], ["Market cap no pico", "num"], ["Market cap agora", "num"],
+    ["Desde o pico", "num"], ["Visto por último"]],
+    mv.day.map((p) => [[fomoLink(p.mint, p.symbol)], [chg(p.peak_change_1h), "num"], [fmtTime(p.peak_at)], [fmtCompact(p.peak_mcap), "num"],
+      [fmtCompact(p.mcap_now), "num"], [p.peak_mcap > 0 ? chg((p.mcap_now / p.peak_mcap - 1) * 100) : "—", "num"], [fmtTime(p.last_seen)]]),
+    "Nenhuma movimentação registrada nas últimas 24h ainda.");
   const waiting = (r) => [[r.open, "abertas (<24h)"], [r.pending, "na fila"], [r.no_data, "sem dados"], [r.errors, "com erro"]]
     .filter(([n]) => n).map(([n, t]) => `${n} ${t}`).join(", ");
   const ret = (x) => el("span", { class: signClass(x), text: x === null ? "—" : (x > 0 ? "+" : "") + fmtPct(x) });

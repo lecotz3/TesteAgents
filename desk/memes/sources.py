@@ -210,19 +210,25 @@ class JupiterTokens:
 
     def __init__(self, api: JupiterApi):
         self._api = api
+        self._lists: dict[tuple, list[dict]] = {}  # one run asks once: discovery and the movers share the answer
+
+    def lists(self, categories: tuple[str, ...] | list[str], interval: str, limit: int = 100) -> list[dict]:
+        """Every item of the lists, with Jupiter's 5m/1h/6h/24h stats, in list order. A failing list is skipped."""
+        key = (tuple(categories), interval, limit)
+        if key not in self._lists:
+            items: list[dict] = []
+            for category in categories:
+                try:
+                    answer = self._api.get(f"/tokens/v2/{category}/{interval}", params={"limit": limit}).json()
+                except FETCH_ERRORS as exc:
+                    log.warning("lista %s da Jupiter indisponível: %s", category, type(exc).__name__)
+                    continue
+                items += [i for i in answer if isinstance(i, dict) and i.get("id")] if isinstance(answer, list) else []
+            self._lists[key] = items
+        return self._lists[key]
 
     def discover(self, categories: tuple[str, ...] | list[str], interval: str, limit: int = 100) -> list[str]:
-        seen: dict[str, None] = {}
-        for category in categories:
-            try:
-                items = self._api.get(f"/tokens/v2/{category}/{interval}", params={"limit": limit}).json()
-            except FETCH_ERRORS as exc:
-                log.warning("lista %s da Jupiter indisponível: %s", category, type(exc).__name__)
-                continue
-            for item in items if isinstance(items, list) else []:
-                if isinstance(item, dict) and item.get("id"):
-                    seen.setdefault(str(item["id"]), None)
-        return list(seen)
+        return list(dict.fromkeys(str(i["id"]) for i in self.lists(categories, interval, limit)))
 
     def info(self, mints: list[str]) -> dict[str, TokenInfo]:
         found: dict[str, TokenInfo] = {}
