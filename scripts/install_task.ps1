@@ -31,6 +31,12 @@ $every1 = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
 Register-ScheduledTask -TaskName "PolymarketDeskMemesExits" -Action $exits -Trigger $every1 -Settings $settings `
     -Description "Desk: memecoins, so precos e regras de saida, a cada 1 min" -Force | Out-Null
 
+$review = New-ScheduledTaskAction -Execute $pythonw -Argument "-m desk memes-review --max 60" -WorkingDirectory $repo
+$hourly = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) `
+    -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration ([TimeSpan]::FromDays(3650))
+Register-ScheduledTask -TaskName "PolymarketDeskMemesReview" -Action $review -Trigger $hourly -Settings $settings `
+    -Description "Desk: memecoins, revisao dos filtros (precos da GeckoTerminal) a cada hora" -Force | Out-Null
+
 # The panel: a read-only local server started at logon, with no window and no time limit, restarted if it dies.
 $panelSettings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) `
     -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
@@ -46,6 +52,7 @@ $shortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "Painel dos robo
 Set-Content -Path $shortcut -Value "[InternetShortcut]`r`nURL=http://127.0.0.1:8765/" -Encoding ASCII
 
 Write-Host "Tarefas registradas: PolymarketDesk (a cada 10 min), PolymarketDeskMemes (memecoins, a cada 3 min),"
-Write-Host "PolymarketDeskMemesExits (saidas das memecoins, a cada 1 min) e PolymarketDeskMonthly (diaria, relata 1x por mes)."
+Write-Host "PolymarketDeskMemesExits (saidas das memecoins, a cada 1 min), PolymarketDeskMemesReview (revisao dos filtros, a cada hora)"
+Write-Host "e PolymarketDeskMonthly (diaria, relata 1x por mes)."
 Write-Host "Painel: PolymarketDeskDashboard (sobe no logon) em http://127.0.0.1:8765 - atalho 'Painel dos robos' na area de trabalho."
 Write-Host "Para remover: powershell -ExecutionPolicy Bypass -File scripts\uninstall_task.ps1"

@@ -334,6 +334,8 @@ def cmd_memes_review(app: MemesApp, max_fetch: int = 100, prices: PriceHistory |
     outcomes = review(app.store.all_decisions(), prices or make_gecko(app.http),
                       app.settings.state_dir / "memes-review.json", app.settings.memes, utcnow(),
                       max_fetch=max_fetch, progress=progress)
+    done = sum(1 for o in outcomes if o.status == "closed")
+    log.info("memes-review: %d decisões revisadas, %d com resultado", len(outcomes), done)
     print(format_report(outcomes, app.store.closed_positions(), app.settings.memes))
     return 0
 

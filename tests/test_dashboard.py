@@ -98,6 +98,19 @@ def test_snapshot_shows_the_memes_agent(state):
     json.dumps(memes)
 
 
+def test_memes_review_on_the_panel_reads_only_the_cache(state):
+    from desk.memes.review import rules_key
+
+    add_memes(state)
+    [row] = snapshot(state, Settings(), NOW, no_scheduler)["memes"]["review"]
+    assert row["decision"] == "bought" and row["count"] == 0 and row["open"] == 1  # 24h not over yet: no API call
+    (state / "memes-review.json").write_text(json.dumps({"rules": rules_key(Settings().memes), "windows": {
+        f"{MINT}|bought": {"mint": MINT, "symbol": "SEALS", "decision": "bought", "ts": NOW.isoformat(),
+                           "status": "closed", "ret": 0.4, "exit": "take_profit"}}}), encoding="utf-8")
+    [row] = snapshot(state, Settings(), NOW, no_scheduler)["memes"]["review"]
+    assert row["count"] == 1 and row["average"] == pytest.approx(0.4) and row["wins"] == 1 and row["open"] == 0
+
+
 def test_tail_handles_missing_files_and_long_logs(tmp_path):
     assert tail(tmp_path / "nope.log", 5) == []
     log = tmp_path / "big.log"

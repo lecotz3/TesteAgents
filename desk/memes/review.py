@@ -180,9 +180,10 @@ def _from_cache(raw: dict) -> Outcome:
     return Outcome(**{**raw, "ts": datetime.fromisoformat(raw["ts"])})
 
 
-def review(decisions: list[dict], prices: PriceHistory, cache_path: Path, s: MemesSettings, now: datetime, *,
+def review(decisions: list[dict], prices: PriceHistory | None, cache_path: Path, s: MemesSettings, now: datetime, *,
            max_fetch: int = 100, progress: Callable[[int, int, str], None] | None = None) -> list[Outcome]:
-    """One outcome per reviewable decision. Finished windows are fetched once and kept in `cache_path`."""
+    """One outcome per reviewable decision. Finished windows are fetched once and kept in `cache_path`.
+    With max_fetch=0 nothing is fetched (the panel): only the cache is read, `prices` may be None."""
     rules = rules_key(s)
     cache = _load_cache(cache_path, rules)
     window = timedelta(hours=s.max_hold_hours)

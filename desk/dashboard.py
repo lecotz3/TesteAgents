@@ -5,6 +5,7 @@ import json
 import subprocess
 import sys
 import time
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
@@ -15,6 +16,7 @@ from desk.config import Settings
 from desk.economy import economics
 from desk.memes.cycle import PENDING_BUY, UNCERTAIN_SELL
 from desk.memes.readiness import readiness
+from desk.memes.review import review, summarize
 from desk.memes.store import MemeStore
 from desk.store import Store
 
@@ -133,6 +135,8 @@ def memes_snapshot(state_dir: Path, settings: Settings, now: datetime,
             "readiness": readiness(store, m, now).as_dict(),
             "halt_reason": store.get_meta("halt_reason") if store.is_halted() else None,
             "uncertain": _uncertain_orders(store, positions),
+            "review": [asdict(r) for r in summarize(
+                review(store.all_decisions(), None, state_dir / "memes-review.json", m, now, max_fetch=0))],
             "scheduler": scheduler() if scheduler else None,
         }
     finally:

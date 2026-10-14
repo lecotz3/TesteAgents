@@ -112,6 +112,13 @@
       <div class="table-wrap"><table id="m-decisions"></table></div>
     </section>
     <section style="margin-top:16px">
+      <h2>Os filtros acertam? E se ele tivesse comprado cada token checado</h2>
+      <div class="muted">Simula as regras de saída reais nas 24h depois de cada decisão (preços de 1 min da GeckoTerminal, menos 2% de custo).
+        Em "Comprou", média positiva é bom. Num filtro que rejeitou, média negativa quer dizer que ele evitou perdedores; positiva, que barrou tokens que dariam lucro.
+        Atualiza sozinho de hora em hora; para rodar agora: <b>python -m desk memes-review</b>.</div>
+      <div class="table-wrap"><table id="m-review"></table></div>
+    </section>
+    <section style="margin-top:16px">
       <h2>Compras e vendas</h2>
       <div class="table-wrap"><table id="m-trades"></table></div>
     </section>
@@ -196,6 +203,7 @@ const LABELS = {
   no_x_link: ["Sem link do X", ""], x_link_dead: ["Post/perfil do X apagado", "bad"], x_weak_narrative: ["Narrativa fraca no X", ""],
   x_no_community: ["Perfil do X sem seguidores", ""], x_unavailable: ["X fora do ar", "warn"],
   low_organic_score: ["Muito bot (Jupiter)", ""], daily_loss_pause: ["Pausa: dia ruim", "warn"],
+  price_moved: ["Preço correu", ""],
 };
 const ACTIONS = { BUY: "Compra", SELL: "Venda", SETTLE: "Liquidação" };
 const fomoLink = (mint, text) => el("a", { href: "https://fomo.family/tokens/solana/" + encodeURIComponent(mint),
@@ -473,6 +481,13 @@ function renderMemes(m) {
     m.trades.map((t) => [[fmtTime(t.ts)], [fomoLink(t.mint, t.symbol)], [ACTIONS[t.side] || t.side], [fmtUsd(t.usd), "num"],
       [el("span", { class: signClass(t.cash_delta), text: fmtSigned(t.cash_delta) }), "num"], [LABELS[t.reason] ? label(t.reason) : t.reason]]),
     "Nenhuma compra ou venda ainda.");
+  const waiting = (r) => [[r.open, "abertas (<24h)"], [r.pending, "na fila"], [r.no_data, "sem dados"], [r.errors, "com erro"]]
+    .filter(([n]) => n).map(([n, t]) => `${n} ${t}`).join(", ");
+  const ret = (x) => el("span", { class: signClass(x), text: x === null ? "—" : (x > 0 ? "+" : "") + fmtPct(x) });
+  table("m-review", [["Decisão"], ["Casos", "num"], ["Média", "num"], ["Ganhou", "num"], ["Pior", "num"], ["Melhor", "num"], ["Ainda sem resultado"]],
+    (m.review || []).map((r) => [[label(r.decision)], [String(r.count), "num"], [ret(r.average), "num"], [`${r.wins}/${r.count}`, "num"],
+      [ret(r.worst), "num"], [ret(r.best), "num"], [waiting(r), "q"]]),
+    "Nenhum token checado a fundo ainda.");
   document.getElementById("m-journal").textContent = m.journal_tail.join("\n") || "(vazio: o diário recebe compras, vendas e o post-mortem)";
 }
 
