@@ -30,6 +30,15 @@ Os robôs agora rodam neste desktop. Se o notebook continuar ligado com as taref
 
 A pasta `state\` do notebook pode ficar lá como arquivo. **Não a copie para cá**: o desktop já começou o próprio histórico, e copiar por cima apagaria o que ele registrou.
 
+## A2. No desktop: carregar a correção do painel (2 min)
+Em 14/10 corrigi, pelo notebook, o duplo clique em `scripts\dashboard.cmd`: ele devia só abrir o painel que já está ligado, mas no Windows abria uma segunda cópia escondida na mesma porta. O desktop só recebe a correção depois de um `git pull`. No desktop, no PowerShell, na pasta do projeto:
+1. `git pull`. Os robôs já usam o código novo no próximo ciclo.
+2. `Stop-ScheduledTask PolymarketDeskDashboard`. Espere uns 3 segundos.
+3. `Start-ScheduledTask PolymarketDeskDashboard`.
+4. Abra o atalho "Painel dos robos". Se ele não abrir, espere até 5 minutos: a tarefa religa o painel sozinha.
+
+Se preferir, peça para o Claude no desktop fazer isso. Ele pode apagar este item depois.
+
 ---
 
 ## Caminho para o dinheiro real
