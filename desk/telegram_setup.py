@@ -102,8 +102,8 @@ def run_setup(env_path: Path, http: httpx.Client) -> int:
     print(f"Conversa escolhida: {chat.label}. Salvei TELEGRAM_CHAT_ID em {env_path}.")
     try:
         bot.call("sendMessage", {"chat_id": chat.id, "text": (
-            "Desk conectado. Você vai receber aqui: compras e vendas (Polymarket e memecoins), memecoins aprovadas, "
-            "desligamento por queda, falhas repetidas e o relatório mensal.")})
+            "Robôs conectados. Você vai receber aqui: compras e vendas (Polymarket e memecoins), memecoins aprovadas, "
+            "desligamento quando um robô não fizer dinheiro, falhas repetidas e o relatório mensal.")})
     except (httpx.HTTPError, ValueError) as exc:
         print(f"Salvei a conversa, mas a mensagem de teste falhou ({type(exc).__name__}).")
         return 1
