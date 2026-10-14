@@ -79,6 +79,27 @@
   .facts b { color: var(--text); font-weight: 600; }
   .note { font-size: 13px; padding: 8px 12px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); }
 
+  /* survival: the agent must make money or it is switched off */
+  .rule { display: flex; gap: 10px; align-items: center; padding: 12px 16px; border-radius: 12px; background: var(--accent-bg); color: var(--text); }
+  .rule b { color: var(--accent); }
+  .survival { border-left: 4px solid var(--good); display: grid; gap: 10px; }
+  .survival.warn { border-left-color: var(--warn); }
+  .survival.danger, .survival.dead { border-left-color: var(--critical); }
+  .survival.dead { background: var(--bad-bg); }
+  .survival .head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+  .survival .head b { font-size: 16px; }
+  .survival .life { display: flex; align-items: center; gap: 12px; }
+  .survival .life .meter { flex: 1; height: 10px; margin: 0; border-radius: 5px; }
+  .survival .life .meter > div { border-radius: 5px; background: var(--good); }
+  .survival.warn .life .meter > div { background: var(--warn); }
+  .survival.danger .life .meter > div { background: var(--critical); }
+  .survival .life .pct { font-weight: 700; min-width: 92px; text-align: right; white-space: nowrap; }
+  .mini-life { display: grid; gap: 6px; }
+  .mini-life .meter { margin: 0; height: 8px; border-radius: 4px; }
+  .mini-life .meter > div { background: var(--good); border-radius: 4px; }
+  .mini-life.warn .meter > div { background: var(--warn); }
+  .mini-life.danger .meter > div { background: var(--critical); }
+
   /* stat tiles */
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
   .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
@@ -166,6 +187,8 @@
 <main id="main">
   <!-- RESUMO -->
   <section id="tab-resumo" role="tabpanel" class="tabpanel" style="display:grid;gap:16px">
+    <div class="rule"><span aria-hidden="true">⚡</span><span><b>Os robôs precisam fazer dinheiro.</b> Cada análise do Claude e o aluguel saem do caixa deles.
+      Se o saldo cair até a linha de corte (40% abaixo do maior saldo que já tiveram), eles são <b>desligados</b>: param de operar e de gastar.</span></div>
     <div id="r-alerts" class="alerts"></div>
     <div class="grid2">
       <article class="card robot" id="r-memes" tabindex="0" data-goto="memes"></article>
@@ -189,6 +212,7 @@
     <div id="m-empty" class="card empty" hidden>O agente de memecoins ainda não rodou. Para um ciclo agora: <b>python -m desk memes</b>.</div>
     <div id="m-body" style="display:grid;gap:16px">
       <div id="m-alerts" class="alerts"></div>
+      <div id="m-survival" class="card survival"></div>
       <div id="m-tiles" class="tiles"></div>
       <div id="m-facts" class="facts"></div>
       <div class="card">
@@ -228,6 +252,7 @@
   <section id="tab-poly" role="tabpanel" class="tabpanel" hidden style="gap:16px">
     <div class="panel-head"><h1>Polymarket</h1><span id="p-pills" class="panel-head"></span></div>
     <div id="p-alerts" class="alerts"></div>
+    <div id="p-survival" class="card survival"></div>
     <div id="p-tiles" class="tiles"></div>
     <div id="p-facts" class="facts"></div>
     <div class="card">
@@ -495,6 +520,54 @@ function schedulerText(sc, every) {
   return [sc.state === "Running" ? "rodando agora" : `próximo ciclo ${fmtClock(sc.next_run)}`, "good"];
 }
 
+// --- survival: it must make money, or at the cut-off line it is switched off ----------------------------------------
+// life = 100% at its peak balance, 0% at the line (drawdown_halt below the peak)
+const lifeLeft = (drawdown, halt) => Math.max(0, Math.min(1, 1 - (drawdown || 0) / (halt || 1)));
+const lifeKind = (x) => (x > 0.5 ? "" : x > 0.25 ? "warn" : "danger");
+function meterNode(x) {
+  const bar = el("div"); bar.style.width = 100 * x + "%";
+  return el("div", { class: "meter", role: "meter", "aria-label": "vida", "aria-valuemin": 0, "aria-valuemax": 100, "aria-valuenow": Math.round(100 * x) }, bar);
+}
+const isDead = (o) => o.halted && o.haltReason !== "manual";  // a manual sell-all pauses buying; it is not a death
+
+function survivalCard(id, o) {
+  const host = document.getElementById(id), dead = isDead(o);
+  const x = dead ? 0 : lifeLeft(o.drawdown, o.halt);
+  host.className = "card survival " + (dead ? "dead" : lifeKind(x));
+  fill(id,
+    el("div", { class: "head" }, dead
+      ? [el("b", { class: "neg", text: "DESLIGADO: não fez dinheiro" }),
+         el("span", { text: `O saldo caiu até a linha de corte (${fmtUsd(o.shutdown)}). Parou de operar e de gastar. Para religar: ${o.resumeCmd}` })]
+      : [el("b", { text: "Precisa fazer dinheiro para continuar ligado" }),
+         el("span", { class: "muted", text: `Os custos saem do caixa dele. Se o saldo cair até ${fmtUsd(o.shutdown)} (${fmtPct(o.halt)} abaixo do maior saldo, ${fmtUsd(o.peak)}), ele é desligado.` })]),
+    dead ? null : el("div", { class: "life" }, [el("span", { class: "muted", text: "Vida" }), meterNode(x), el("span", { class: "pct", text: fmtPct(x) })]),
+    el("div", { class: "facts" }, [
+      dead ? null : el("span", {}, ["pode perder mais ", el("b", { text: fmtUsd(Math.max(0, o.equity - o.shutdown)) })]),
+      el("span", {}, ["ganhou operando ", signed(o.trading)]),
+      el("span", {}, ["gastou para existir ", el("b", { text: fmtUsd(o.costs) })]),
+      el("span", {}, ["resultado ", signed(o.trading - o.costs)]),
+      o.runway ? el("span", {}, o.runway) : null,
+    ]),
+  );
+}
+
+function miniLife(o) {
+  const dead = isDead(o), x = dead ? 0 : lifeLeft(o.drawdown, o.halt);
+  return el("div", { class: "mini-life " + (dead ? "danger" : lifeKind(x)) }, [
+    el("div", { class: "facts" }, dead ? [el("b", { class: "neg", text: "Desligado: não fez dinheiro" })]
+      : [el("span", {}, ["Vida ", el("b", { text: fmtPct(x) }), ` · pode perder mais ${fmtUsd(Math.max(0, o.equity - o.shutdown))} até ser desligado em ${fmtUsd(o.shutdown)}`])]),
+    meterNode(x)]);
+}
+const memesLife = (m) => ({ equity: m.equity, peak: m.peak, shutdown: m.shutdown_line, drawdown: m.drawdown, halt: m.drawdown_halt,
+  halted: m.halted, haltReason: m.halt_reason, trading: m.net + m.costs_total, costs: m.costs_total, resumeCmd: "python -m desk memes-resume",
+  runway: ["custos nas últimas 24h ", el("b", { text: fmtUsd(m.costs_24h) })] });
+const polyLife = (s) => {
+  const e = s.economics;
+  return { equity: e.equity, peak: s.peak, shutdown: e.shutdown_line, drawdown: s.drawdown, halt: s.drawdown_halt, halted: s.halted,
+    haltReason: "drawdown", trading: e.trading_pnl, costs: e.costs_total, resumeCmd: "python -m desk resume",
+    runway: isNum(e.runway_days) ? ["sem lucro, aguenta ", el("b", { text: `${Math.round(e.runway_days)} dias` }), " pagando o aluguel"] : null };
+};
+
 // --- alerts --------------------------------------------------------------------------------------------------------
 const dnsBlocked = (s) => ((s.cycles[0] || {}).errors || []).some((e) => e.includes("DNS"));
 function memesAlerts(m) {
@@ -520,7 +593,7 @@ function polyAlerts(s) {
 const alertNodes = (list, who) => list.map(([bad, text]) => el("div", { class: "alert" + (bad ? " bad" : "") }, [who ? el("b", { text: who }) : null, el("span", { text })]));
 
 // --- RESUMO --------------------------------------------------------------------------------------------------------
-function robotCard(id, { name, mode, halted, sched, equity, start, curve, factsList, note, extra }) {
+function robotCard(id, { name, mode, halted, sched, equity, start, curve, factsList, note, extra, lifeNode }) {
   const net = equity - start, pct = start ? net / start : 0;
   const [schedText, schedKind] = sched;
   fill(id,
@@ -534,6 +607,7 @@ function robotCard(id, { name, mode, halted, sched, equity, start, curve, factsL
         el("div", { class: "delta" }, [el("span", { class: signClass(net), text: `${fmtSigned(net)} (${pct > 0 ? "+" : ""}${fmtPct(pct, 1)})` }),
           el("span", { class: "muted", text: ` desde ${fmtUsd(start)}` })])]),
       sparkline(curve)]),
+    lifeNode || null,
     el("div", { class: "facts" }, facts(factsList)),
     note ? el("div", { class: "note", text: note }) : null,
     extra || null,
@@ -546,20 +620,19 @@ function renderResumo(s) {
   if (m) {
     const r = m.readiness, progress = Math.min(r.days / Math.max(r.min_days, 1), r.closed / Math.max(r.min_trades, 1), r.net > 0 ? 1 : 0);
     robotCard("r-memes", { name: "Memecoins", mode: m.mode, halted: m.halted, sched: schedulerText(m.scheduler), equity: m.equity,
-      start: m.bankroll_start, curve: m.equity_curve,
+      start: m.bankroll_start, curve: m.equity_curve, lifeNode: miniLife(memesLife(m)),
       factsList: [["posições", `${m.positions.length}/${m.max_positions}`], ["trades fechados", `${m.closed.count} (${m.closed.wins} com lucro)`],
         ["último ciclo", ago(m.last_cycle_minutes_ago)]],
-      extra: el("div", {}, [el("div", { class: "facts" }, [el("span", {}, ["Pronto para dinheiro real? ", el("b", { text: r.ready ? "sim" : "ainda não" }),
-          ` · ${Math.min(r.days, r.min_days)}/${r.min_days} dias · ${Math.min(r.closed, r.min_trades)}/${r.min_trades} trades`])]),
-        el("div", { class: "meter" }, (() => { const d = el("div"); d.style.width = 100 * progress + "%"; return d; })())]) });
+      extra: el("div", { class: "facts" }, [el("span", {}, ["Pronto para dinheiro real? ", el("b", { text: r.ready ? "sim" : "ainda não" }),
+          ` · ${Math.min(r.days, r.min_days)}/${r.min_days} dias · ${Math.min(r.closed, r.min_trades)}/${r.min_trades} trades (${Math.round(100 * progress)}%)`])]) });
   } else {
     fill("r-memes", el("div", { class: "top" }, [el("span", { class: "name", text: "Memecoins" }), pill("não iniciado")]),
       empty("O agente de memecoins ainda não rodou."));
   }
   const e = s.economics;
   robotCard("r-poly", { name: "Polymarket", mode: s.mode, halted: s.halted, sched: schedulerText(s.scheduler), equity: e.equity,
-    start: e.bankroll_start, curve: s.equity_curve,
-    factsList: [["posições", `${s.positions.length}/${s.max_positions}`], ["fôlego", isNum(e.runway_days) ? `${Math.round(e.runway_days)} dias` : "—"],
+    start: e.bankroll_start, curve: s.equity_curve, lifeNode: miniLife(polyLife(s)),
+    factsList: [["posições", `${s.positions.length}/${s.max_positions}`], ["sem lucro aguenta", isNum(e.runway_days) ? `${Math.round(e.runway_days)} dias` : "—"],
       ["último ciclo", ago(s.last_cycle_minutes_ago)]],
     note: dnsBlocked(s) ? "Sem acesso: a rede desta casa bloqueia o Polymarket. O robô roda, mas não vê os mercados." : null });
 
@@ -589,6 +662,7 @@ function renderMemes(m) {
     pill(m.halted ? "desligado" : "ligado", m.halted ? "bad" : "good", true), pill(schedText, schedKind),
     m.auto_trade ? null : pill("só alertas", "warn"));
   fill("m-alerts", ...alertNodes(memesAlerts(m)));
+  survivalCard("m-survival", memesLife(m));
   const r = m.readiness, progress = Math.min(r.days / Math.max(r.min_days, 1), r.closed / Math.max(r.min_trades, 1), r.net > 0 ? 1 : 0);
   fill("m-tiles",
     tile("Saldo", fmtUsd(m.equity), [signed(m.net), ` desde ${fmtUsd(m.bankroll_start)}`]),
@@ -597,9 +671,8 @@ function renderMemes(m) {
     tile("Pronto para dinheiro real?", r.ready ? "Sim" : "Ainda não",
       `${Math.min(r.days, r.min_days)}/${r.min_days} dias · ${Math.min(r.closed, r.min_trades)}/${r.min_trades} trades · ${fmtSigned(r.net)} após custos`,
       r.ready ? "pos" : "", 100 * progress));
-  fill("m-facts", ...facts([["custo para existir", `${fmtUsd(m.costs_total)} (24h ${fmtUsd(m.costs_24h)})`],
-    ["queda do pico", `${fmtPct(m.drawdown, 1)} · desliga em ${fmtUsd(m.shutdown_line)}`],
-    ["checagens do Claude hoje", `${m.vets_24h}/${m.vet_cap}`], ["último ciclo", ago(m.last_cycle_minutes_ago)]]));
+  fill("m-facts", ...facts([["checagens do Claude hoje", `${m.vets_24h}/${m.vet_cap} (cada uma sai do caixa dele)`],
+    ["último ciclo", ago(m.last_cycle_minutes_ago)]]));
   document.getElementById("m-chart-sub").textContent = "últimos 30 dias · passe o mouse para ver cada ponto";
   lineChart("m-chart", m.equity_curve, [
     { value: m.bankroll_start, label: "banca inicial", color: "--muted" },
@@ -725,14 +798,13 @@ function renderPoly(s) {
     pill(s.halted ? "desligado" : "ligado", s.halted ? "bad" : "good", true), pill(schedText, schedKind),
     el("span", { class: "muted", text: "só paper: o Brasil está bloqueado para ordens reais" }));
   fill("p-alerts", ...alertNodes(polyAlerts(s)));
+  survivalCard("p-survival", polyLife(s));
   fill("p-tiles",
     tile("Saldo", fmtUsd(e.equity), [signed(e.net), ` desde ${fmtUsd(e.bankroll_start)}`]),
-    tile("Fôlego", isNum(e.runway_days) ? `${Math.round(e.runway_days)} dias` : "—", `até ser desligado se não lucrar (linha ${fmtUsd(e.shutdown_line)})`,
-      isNum(e.runway_days) && e.runway_days < 14 ? "neg" : ""),
+    tile("Análises do Claude (24h)", `${s.analyst_calls_24h} de ${s.analyst_cap}`, "cada uma custa do caixa dele"),
     tile("Posições abertas", `${s.positions.length} de ${s.max_positions}`, `caixa livre ${fmtUsd(s.cash)}`),
     tile("Trades fechados", String(s.closed.count), s.closed.count ? [`${s.closed.wins} com lucro · `, signed(s.closed.pnl)] : "nenhum ainda"));
-  fill("p-facts", ...facts([["ganho operando", fmtSigned(e.trading_pnl)], ["custo para existir", `${fmtUsd(e.costs_total)} (24h ${fmtUsd(e.costs_24h)} de ${fmtUsd(e.budget_24h)})`],
-    ["queda do pico", `${fmtPct(s.drawdown, 1)} · desliga em ${fmtPct(s.drawdown_halt)}`], ["análises hoje", `${s.analyst_calls_24h}/${s.analyst_cap}`],
+  fill("p-facts", ...facts([["gasto nas últimas 24h", `${fmtUsd(e.costs_24h)} (teto ${fmtUsd(e.budget_24h)})`],
     ["último ciclo", ago(s.last_cycle_minutes_ago)]]));
   document.getElementById("p-chart-sub").textContent = "últimos 30 dias";
   lineChart("p-chart", s.equity_curve, [
